@@ -1,0 +1,9 @@
+gpubench.cu:	Couple kernels to do 8bit->float conversion, float->2bit conversion and polarisation conversion
+statistics.cu:	Example to compute mean and RMS of vector
+gpuauto.cu:	Incomplete example of an autocorrelator (does not average after FFT)
+gpuspeed	More complete autocorrelation benchmark
+filterspeed.cu  Polyphase filterbank implementation
+gpufft.cu	FFT benchmark
+gpucorr.cu	Small N X engine (not very efficent)
+
+
