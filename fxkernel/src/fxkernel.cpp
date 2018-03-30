@@ -130,7 +130,7 @@ void FxKernel::process()
     for(int j=0;j<numantennas;j++)
     {
       // unpack
-      // Obviously this needs some coarse delay correction to be added!
+      // Obviously this needs some coarse delay correction to be added! i.e., &(inputdata[j][someoffset])
       unpack(inputdata[j], unpacked[j]);
   
       // fringe rotate
@@ -180,7 +180,7 @@ void FxKernel::fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2)
   if(status != vecNoErr)
     fprintf(stderr, "Error in linearinterpolate, subval addition!!!\n");
 
-  // Turn delay into phase by multiplying by the lo
+  // Turn delay into turns of phase by multiplying by the lo
   status = vectorMulC_f64(subxval, lofreq, subphase, stridesize);
   if(status != vecNoErr)
     fprintf(stderr, "Error in linearinterpolate lofreq sub multiplication!!!\n");
@@ -192,5 +192,28 @@ void FxKernel::fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2)
     status = vectorAddC_f64_I((lofreq-int(lofreq))*double(integerdelay), subphase, stridesize);
     if(status != vecNoErr)
       fprintf(stderr, "Error in linearinterpolate lofreq non-integer freq addition!!!\n");
+  }
+
+  // Convert turns of phase into radians and bound into [0,2pi), then take sin/cos and assemble rotator vector
+  for(int i=0;i<stridesize;i++) {
+    subarg[i] = -TWO_PI*(subphase[i] - int(subphase[i]));
+    steparg[i] = -TWO_PI*(stepphase[i] - int(stepphase[i]));
+  }
+  status = vectorSinCos_f32(subarg, subsin, subcos, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error in sin/cos of sub rotate argument!!!\n");
+  status = vectorSinCos_f32(steparg, stepsin, stepcos, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error in sin/cos of step rotate argument!!!\n");
+  status = vectorRealToComplex_f32(subcos, subsin, complexrotator, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error assembling sub into complex!!!\n");
+  status = vectorRealToComplex_f32(stepcos, stepsin, stepcplx, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error assembling step into complex!!!\n");
+  for(int i=1;i<stridesize;i++) {
+    status = vectorMulC_cf32(complexrotator, stepcplx[i], &complexrotator[i*stridesize], stridesize);
+    if(status != vecNoErr)
+      fprintf(stderr, "Error doing the time-saving complex multiplication!!!\n");
   }
 }

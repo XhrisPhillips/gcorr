@@ -1,3 +1,5 @@
+#include <math.h>
+
 /* Convenience constants */
 #define TWO_PI                   2*IPP_PI
 #define TINY                     0.00000000001
@@ -8,6 +10,7 @@
 #define cf32                     Ipp32fc
 #define cf64                     Ipp64fc
 #define vecNoErr                 ippStsNoErr
+#define vecStatus                IppStatus
 
 /* Allocation of arrays */
 #define vectorAlloc_f32(length)  ippsMalloc_32f(length)
@@ -22,4 +25,14 @@
 #define vectorAddC_f64_I(val, srcdest, length)                              ippsAddC_64f_I(val, srcdest, length)
 #define vectorAddProduct_cf32(src1, src2, accumulator, length)              ippsAddProduct_32fc(src1, src2, accumulator, length)
 #define vectorMul_cf32(src1, src2, dest, length)                            ippsMul_32fc(src1, src2, dest, length)
+#define vectorMulC_cf32(src, val, dest, length)                             ippsMulC_32fc(src, val, dest, length)
 #define vectorMulC_f64(src, val, dest, length)                              ippsMulC_64f(src, val, dest, length)
+#define vectorRealToComplex_f32(real, imag, complex, length)                ippsRealToCplx_32f(real, imag, complex, length)
+//#define vectorSinCos_f32(src, sin, cos, length)                             ippsSinCos_32f_A11(src, sin, cos, length)
+#define vectorSinCos_f32(src, sin, cos, length)                             genericSinCos_32f(src, sin, cos, length)
+
+/* A generic version of SinCos, since it seems to have disappeared out of IPPS (probably in MKL?) */
+inline vecStatus genericSinCos_32f(const f32 *src, f32 *sin, f32 *cos, int length)
+{ for(int i=0;i<length;i++) sin[i]=sinf(src[i]);
+  for(int i=0;i<length;i++) cos[i]=cosf(src[i]);
+  return vecNoErr; }
