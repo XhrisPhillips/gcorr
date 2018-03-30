@@ -1,13 +1,22 @@
+#include <ipps.h>
+#include "vectordefs.h"
+
 class FxKernel{
 public:
   FxKernel(int nant, int nchan, int nfft, double localosc, double bw);
   ~FxKernel();
-  setInputData(char ** idata);
-  setDelays(double ** delays);
-  process();
+  void setInputData(char ** idata);
+  void setDelays(double ** d);
+  void process();
 
 private:
+  /* Method to unpack the coarsely quantised input data to complex floats */
+  void unpack(char * inputdata, cf32 ** unpacked);
+
   // input data array
+  char ** inputdata;
+
+  // unpacked data
   cf32 *** unpacked;
 
   // output data array
@@ -29,5 +38,4 @@ private:
   int numffts;  // i.e., the length of a subint
   double lo; // in Hz
   double bandwidth; // in Hz
-}
-
+};

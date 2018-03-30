@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
   bandwidth = 32000000.0;
 
   // create the FxKernel
-  FxKernel fxkernel = FxKernel(numchannels, numatennas, numffts, lo, bandwidth);
+  FxKernel fxkernel = FxKernel(numchannels, numantennas, numffts, lo, bandwidth);
 
   // Set the input data and the delays
   fxkernel.setInputData(inputdata);

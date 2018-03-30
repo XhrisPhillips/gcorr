@@ -15,8 +15,13 @@ AC_CONFIG_MACRO_DIR([m4])
 # all artifacts in the top level directory.
 AM_INIT_AUTOMAKE([subdir-objects foreign -Wall -Werror])
 
+# Need to have IPP
+PKG_CHECK_MODULES(IPP, ipp)
+AC_SUBST(IPP_CFLAGS)
+AC_SUBST(IPP_LIBS)
+
 # These are the files to be generated.
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile])
 
 # Safety check - list a source file that wouldn't be in other directories.
 AC_CONFIG_SRCDIR([src/testfxkernel.cpp])
@@ -28,6 +33,8 @@ AC_CONFIG_HEADERS([config.h])
 AC_PROG_CXX
 
 # Check for libraries, headers, data etc here.
+CXXFLAGS="${CXXFLAGS} ${IPP_CFLAGS}"
+LIBS="${IPP_LIBS} $LIBS"
 
 # Last line: actually generate all required output files.
 AC_OUTPUT
