@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
 
   // create the FxKernel
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
-  FxKernel fxkernel = FxKernel(numchannels, numantennas, numffts, lo, bandwidth);
+  FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, lo, bandwidth);
 
   // Set the input data and the delays
   fxkernel.setInputData(inputdata);

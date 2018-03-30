@@ -3,6 +3,8 @@
 #include "math.h"
 #include <stdio.h>
 #include <cstdlib>
+#include <iostream>
+
 
 // FxKernel will operate on a single subband (dual pol), upper sideband, for the duration of one subintegration
 // Suggest we fix to use 2 bit real data, in 2's complement?  i.e., assume that the data itself has headers stripped etc
