@@ -10,8 +10,8 @@
 // completely independent instances of FxKernel (probably easier)?
 // Suggest that we force the nchan to be a power of 2 to make the striding complex multiplication for phase rotations easy
 // I'm also suggesting that we unpack directly to a complex array, to make the subsequent fringe rotation easier
-FxKernel::FxKernel(int nant, int nchan, int nfft, double localosc, double bw)
-  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), lo(localosc), bandwidth(bw), sampletime(1.0/(2.0*bw))
+FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
+  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
 {
   // Figure out the array stride size
   stridesize = (int)sqrt(nchan);
@@ -19,6 +19,13 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double localosc, double bw)
   {
     printf("Please choose a number of channels that is a square\n");
     exit(1);
+  }
+
+  // check if LO frequency has a fractional component
+  fractionalLoFreq = false;
+  if(lofreq - int(lofreq) > TINY)
+  {
+    fractionalLoFreq = true;
   }
 
   // allocate the unpacked array
@@ -50,6 +57,8 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double localosc, double bw)
   stepsin   = vectorAlloc_f32(stridesize);
   stepcos   = vectorAlloc_f32(stridesize);
   stepcplx  = vectorAlloc_cf32(stridesize);
+  subchannelfreqs = vectorAlloc_f32(stridesize);
+  stepchannelfreqs = vectorAlloc_f32(stridesize);
   complexrotator = vectorAlloc_cf32(fftchannels);
 
   // populate the fringe rotation arrays that can be pre-populated
@@ -59,6 +68,8 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double localosc, double bw)
     subtoff[i] = i*sampletime;
     stepxoff[i] = double(i*stridesize)/double(fftchannels);
     steptoff[i] = i*stridesize*sampletime;
+    subchannelfreqs[i] = (float)((TWO_PI*(i)*bandwidth)/numchannels);
+    stepchannelfreqs[i] = (float)((TWO_PI*i*stridesize*bandwidth)/numchannels);
   }
 
   // also the FFT'd array, fractional sample correction arrays, etc etc
@@ -94,6 +105,8 @@ FxKernel::~FxKernel()
   vectorFree(stepsin);
   vectorFree(stepcos);
   vectorFree(stepcplx);
+  vectorFree(subchannelfreqs);
+  vectorFree(stepchannelfreqs);
   vectorFree(complexrotator);
 }
 
@@ -116,6 +129,7 @@ void FxKernel::process()
     for(int j=0;j<numantennas;j++)
     {
       // unpack
+      // Obviously this needs some coarse delay correction to be added!
       unpack(inputdata[j], unpacked[j]);
   
       // fringe rotate
@@ -143,4 +157,39 @@ void FxKernel::unpack(char * inputdata, cf32 ** unpacked)
 {}
 
 void FxKernel::fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2)
-{}
+{
+  double a, b; //coefficients for the linear approximation of delay across this FFT
+  int integerdelay;
+  int status;
+
+  // calculate a and b (should really provide 3 delays to do this, or better yet just provide a and b to the function)
+ 
+  // subtract off any integer delay present
+  integerdelay = static_cast<int>(b);
+  b -= integerdelay;
+
+  // Fill in the delay values, using a and b and the precomputeed offsets
+  status = vectorMulC_f64(subxoff, a, subxval, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error in linearinterpolate, subval multiplication\n");
+  status = vectorMulC_f64(stepxoff, a, stepxval, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error in linearinterpolate, stepval multiplication\n");
+  status = vectorAddC_f64_I(b, subxval, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error in linearinterpolate, subval addition!!!\n");
+
+  // Turn delay into phase by multiplying by the lo
+  status = vectorMulC_f64(subxval, lofreq, subphase, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error in linearinterpolate lofreq sub multiplication!!!\n");
+  status = vectorMulC_f64(stepxval, lofreq, stepphase, stridesize);
+  if(status != vecNoErr)
+    fprintf(stderr, "Error in linearinterpolate lofreq step multiplication!!!\n");
+  if(fractionalLoFreq) 
+  {
+    status = vectorAddC_f64_I((lofreq-int(lofreq))*double(integerdelay), subphase, stridesize);
+    if(status != vecNoErr)
+      fprintf(stderr, "Error in linearinterpolate lofreq non-integer freq addition!!!\n");
+  }
+}

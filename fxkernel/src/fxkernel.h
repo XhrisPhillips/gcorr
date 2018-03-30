@@ -37,6 +37,7 @@ private:
   f32 * subarg;
   f32 * subsin;
   f32 * subcos;
+  f32 * subchannelfreqs;
 
   f64 * steptoff;
   f64 * steptval;
@@ -46,6 +47,7 @@ private:
   f32 * steparg;
   f32 * stepsin;
   f32 * stepcos;
+  f32 * stepchannelfreqs;
   cf32 * stepcplx;
   cf32 * complexrotator;
   cf32 *** channelised;
@@ -58,7 +60,8 @@ private:
   int numffts;  // i.e., the length of a subint
   int fftchannels; //2*nchan, since we're assuming real data
   int stridesize; // used for the time-saving complex multiplications
-  double lo; // in Hz
+  double lofreq; // in Hz
   double bandwidth; // in Hz
   double sampletime; //in seconds
+  bool fractionalLoFreq; //if true, means we need to do an extra multiplication in fringe rotation phase calculation
 };
