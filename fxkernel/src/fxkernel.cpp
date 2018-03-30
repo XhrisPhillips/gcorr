@@ -11,7 +11,7 @@
 // Suggest that we force the nchan to be a power of 2 to make the striding complex multiplication for phase rotations easy
 // I'm also suggesting that we unpack directly to a complex array, to make the subsequent fringe rotation easier
 FxKernel::FxKernel(int nant, int nchan, int nfft, double localosc, double bw)
-  : numantennas(nant), numchannels(nchan), numffts(nfft), lo(localosc), bandwidth(bw)
+  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), lo(localosc), bandwidth(bw), sampletime(1.0/(2.0*bw))
 {
   // Figure out the array stride size
   stridesize = (int)sqrt(nchan);
@@ -50,7 +50,16 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double localosc, double bw)
   stepsin   = vectorAlloc_f32(stridesize);
   stepcos   = vectorAlloc_f32(stridesize);
   stepcplx  = vectorAlloc_cf32(stridesize);
-  complexrotator = vectorAlloc_cf32(2*nchan);
+  complexrotator = vectorAlloc_cf32(fftchannels);
+
+  // populate the fringe rotation arrays that can be pre-populated
+  for(int i=0;i<stridesize;i++) 
+  {
+    subxoff[i] = (double(i)/double(fftchannels));
+    subtoff[i] = i*sampletime;
+    stepxoff[i] = double(i*stridesize)/double(fftchannels);
+    steptoff[i] = i*stridesize*sampletime;
+  }
 
   // also the FFT'd array, fractional sample correction arrays, etc etc
 }

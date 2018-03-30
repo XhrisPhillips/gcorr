@@ -56,7 +56,9 @@ private:
   int numantennas;
   int numchannels;
   int numffts;  // i.e., the length of a subint
+  int fftchannels; //2*nchan, since we're assuming real data
   int stridesize; // used for the time-saving complex multiplications
   double lo; // in Hz
   double bandwidth; // in Hz
+  double sampletime; //in seconds
 };
