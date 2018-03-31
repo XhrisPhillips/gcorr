@@ -55,14 +55,17 @@ int main(int argc, char *argv[])
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
   FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, lo, bandwidth);
 
-  // Set the input data and the delays
-  fxkernel.setInputData(inputdata);
-  fxkernel.setDelays(delays);
+  for (i=0; i<nsubint; i++) {
 
-  // Checkpoint for timing
+    // Set the input data and the delays
+    fxkernel.setInputData(inputdata);
+    fxkernel.setDelays(delays);
+
+    // Checkpoint for timing
   
-  // Run the processing
-  fxkernel.process();
+    // Run the processing
+    fxkernel.process();
+  }
 
   // Calculate the elapsed time
 
