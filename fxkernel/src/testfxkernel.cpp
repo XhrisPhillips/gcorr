@@ -1,19 +1,35 @@
+#include <iostream>
+
 #include "fxkernel.h"
 #include "vectordefs.h"
 
 void allocData(u8 ***data, int numantenna, int numchannels, int numffts, int nbit, int nsubint) {
-  int i;
+  int i, cfactor;
 
-  for (i=0; i<numantenna; i++) {
-
+  int iscomplex = 0;
+  int nPol = 2;
+  if (iscomplex) {
+    cfactor = 1;
+  } else {
+    cfactor = 2; // If real data FFT size twice size of number of frequecy channels
   }
+  
+  int bytespersubint = numchannels*cfactor*numffts*nbit/8*nPol;
+  std::cout << "Allocating " << bytespersubint/1024/1024 << " MB per antenna per subint" << std::endl;
+  std::cout << "          " << bytespersubint * numantenna * nsubint / 1024 / 1024 << " MB total" << std::endl;
 
+
+  *data = new u8*[numantenna];
+  for (i=0; i<numantenna; i++) {
+    (*data)[i] = new u8[bytespersubint*nsubint];
+  }
 }
 
 
 int main(int argc, char *argv[])
 {
   // variables for the test
+  int i;
   u8 ** inputdata;
   double ** delays;
   int numchannels, numantennas, numffts, nbit, nsubint;
@@ -49,5 +65,10 @@ int main(int argc, char *argv[])
   fxkernel.process();
 
   // Calculate the elapsed time
-  
+
+  // Free memory
+   for (i=0; i<numantennas; i++) {
+     delete(inputdata[i]);
+  }
+   delete(inputdata);
 }
