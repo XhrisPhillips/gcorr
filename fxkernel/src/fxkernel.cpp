@@ -113,7 +113,7 @@ FxKernel::~FxKernel()
   vectorFree(complexrotator);
 }
 
-void FxKernel::setInputData(char ** idata)
+void FxKernel::setInputData(u8 ** idata)
 {
   inputdata = idata;
 }
@@ -156,7 +156,7 @@ void FxKernel::process()
   }
 }
 
-void FxKernel::unpack(char * inputdata, cf32 ** unpacked)
+void FxKernel::unpack(u8 * inputdata, cf32 ** unpacked)
 {}
 
 void FxKernel::fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2)

@@ -1,23 +1,24 @@
 #include <ipps.h>
+#include <ippvm.h>
 #include "vectordefs.h"
 
 class FxKernel{
 public:
   FxKernel(int nant, int nchan, int nfft, double localosc, double bw);
   ~FxKernel();
-  void setInputData(char ** idata);
+  void setInputData(u8 ** idata);
   void setDelays(double ** d);
   void process();
 
 private:
   /* Method to unpack the coarsely quantised input data to complex floats */
-  void unpack(char * inputdata, cf32 ** unpacked);
+  void unpack(u8 * inputdata, cf32 ** unpacked);
 
   /* Method to fringe rotate the unpacked data in place */
   void fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2);
 
   // input data array
-  char ** inputdata;
+  u8 ** inputdata;
 
   // unpacked data
   cf32 *** unpacked;
