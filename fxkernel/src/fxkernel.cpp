@@ -17,9 +17,10 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
   : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
 {
   iscomplex = 0; // Allow for further generalisation later
-  if (iscomplex)
+  if (iscomplex) {
     cfact = 2;
-  else
+    fftchannels /= 2;
+  }  else
     cfact = 1;
   
   // Figure out the array stride size
@@ -37,8 +38,6 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
     fractionalLoFreq = true;
   }
 
-  int fftchannels = cfact*nchan;
-  
   // allocate the unpacked array
   unpacked = new cf32**[nant];
   for(int i=0;i<nant;i++)
@@ -168,8 +167,9 @@ void FxKernel::process()
     for(int j=0;j<numantennas;j++)
     {
       // unpack
-      // Obviously this needs some coarse delay correction to be added! i.e., &(inputdata[j][someoffset])
-      unpack(inputdata[j], unpacked[j]);
+      // This needs some coarse delay correction to be added to offset
+      int offset = i*fftchannels;
+      unpack(inputdata[j], unpacked[j], offset);
   
       // fringe rotate
       fringerotate(unpacked[j], delays[j][i], delays[j][i+1]);
@@ -193,7 +193,7 @@ void FxKernel::process()
   }
 }
 
-void FxKernel::unpack(u8 * inputdata, cf32 ** unpacked)
+void FxKernel::unpack(u8 * inputdata, cf32 ** unpacked, int offset)
 {}
 
 void FxKernel::fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2)

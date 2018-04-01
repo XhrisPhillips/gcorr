@@ -13,7 +13,7 @@ public:
 
 private:
   /* Method to unpack the coarsely quantised input data to complex floats */
-  void unpack(u8 * inputdata, cf32 ** unpacked);
+  void unpack(u8 * inputdata, cf32 ** unpacked, int offset);
 
   /* Method to fringe rotate the unpacked data in place */
   void fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2);
