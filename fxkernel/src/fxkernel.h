@@ -1,5 +1,6 @@
 #include <ipps.h>
 #include <ippvm.h>
+#include <ippcore.h>
 #include "vectordefs.h"
 
 class FxKernel{
@@ -17,11 +18,17 @@ private:
   /* Method to fringe rotate the unpacked data in place */
   void fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2);
 
+  /* Method to channelised (FFT) the data, not in place */
+  void dofft(cf32 ** unpacked, cf32 ** channelised);
+  
   // input data array
   u8 ** inputdata;
 
   // unpacked data
   cf32 *** unpacked;
+
+  // channelised data
+  cf32 *** channelised;
 
   // output data array
   cf32 *** visibilities;
@@ -51,9 +58,13 @@ private:
   f32 * stepchannelfreqs;
   cf32 * stepcplx;
   cf32 * complexrotator;
-  cf32 *** channelised;
   cf32 ** fracsamp1;
   cf32 ** fracsamp2;
+
+  // FFTs
+  u8 * fftbuffer;
+  vecFFTSpecC_cf32 * pFFTSpecC;
+
 
   // other constants
   int numantennas;
@@ -65,4 +76,6 @@ private:
   double bandwidth; // in Hz
   double sampletime; //in seconds
   bool fractionalLoFreq; //if true, means we need to do an extra multiplication in fringe rotation phase calculation
+  bool iscomplex;  // Is the original data real or complex voltages
+  int cfact;
 };

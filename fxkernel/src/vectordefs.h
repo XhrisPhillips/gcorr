@@ -17,6 +17,8 @@
 #define vecNoErr                 ippStsNoErr
 #define vecStatus                IppStatus
 
+#define vecStatus                IppStatus
+
 /* Allocation of arrays */
 #define vectorAlloc_u8(length)   ippsMalloc_8u(length)
 #define vectorAlloc_f32(length)  ippsMalloc_32f(length)
@@ -35,12 +37,14 @@
 #define vectorMulC_f64(src, val, dest, length)                              ippsMulC_64f(src, val, dest, length)
 #define vectorRealToComplex_f32(real, imag, complex, length)                ippsRealToCplx_32f(real, imag, complex, length)
 #define vectorSinCos_f32(src, sin, cos, length)                             ippsSinCos_32f_A11(src, sin, cos, length)
-//#define vectorSinCos_f32(src, sin, cos, length)                             genericSinCos_32f(src, sin, cos, length)
 
-/* A generic version of SinCos, since it seems to have disappeared out of IPPS (probably in MKL?) */
-inline vecStatus genericSinCos_32f(const f32 *src, f32 *sin, f32 *cos, int length)
-{ for(int i=0;i<length;i++) sin[i]=sinf(src[i]);
-  for(int i=0;i<length;i++) cos[i]=cosf(src[i]);
-  return vecNoErr; }
+/* FFT routines */
+#define vecFFT_NoReNorm          IPP_FFT_NODIV_BY_ANY
+#define vecFFT_ReNorm            IPP_FFT_DIV_INV_BY_N
+#define vecAlgHintFast           ippAlgHintFast
+#define vecAlgHintAccurate       ippAlgHintAccurate
+#define vecFFTSpecC_cf32         IppsFFTSpec_C_32fc
+#define vectorFFT_RtoC_f32(src, dest, fftspec, fftbuffer)                   ippsFFTFwd_RToCCS_32f(src, dest, fftspec, fftbuffer)
+#define vectorFFT_CtoC_cf32(src, dest, fftspec, fftbuff)                    ippsFFTFwd_CToC_32fc(src, dest, fftspec, fftbuff)
 
 #endif

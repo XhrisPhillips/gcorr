@@ -16,11 +16,17 @@
 FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
   : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
 {
+  iscomplex = 0; // Allow for further generalisation later
+  if (iscomplex)
+    cfact = 2;
+  else
+    cfact = 1;
+  
   // Figure out the array stride size
   stridesize = (int)sqrt(nchan);
   if(stridesize*stridesize != nchan)
   {
-    printf("Please choose a number of channels that is a square\n");
+    std::cerr << "Please choose a number of channels that is a square" << std::endl;
     exit(1);
   }
 
@@ -31,6 +37,8 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
     fractionalLoFreq = true;
   }
 
+  int fftchannels = cfact*nchan;
+  
   // allocate the unpacked array
   unpacked = new cf32**[nant];
   for(int i=0;i<nant;i++)
@@ -38,7 +46,7 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
     unpacked[i] = new cf32*[2];
     for(int j=0;j<2;j++)
     {
-      unpacked[i][j] = vectorAlloc_cf32(2*nchan);
+      unpacked[i][j] = vectorAlloc_cf32(fftchannels);
     }
   }
 
@@ -75,7 +83,32 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
     stepchannelfreqs[i] = (float)((TWO_PI*i*stridesize*bandwidth)/numchannels);
   }
 
-  // also the FFT'd array, fractional sample correction arrays, etc etc
+  // Allocate memory for FFT'ed data and initialised FFT
+  int order = 0;
+  while((fftchannels) >> order != 1)
+    order++;
+
+  channelised = new cf32**[nant];
+  for(int i=0;i<nant;i++)
+  {
+    channelised[i] = new cf32*[2];
+    for(int j=0;j<2;j++)
+    {
+      channelised[i][j] = vectorAlloc_cf32(fftchannels);
+    }
+  }
+  
+  int sizeFFTSpec, sizeFFTInitBuf, wbufsize;
+  u8 *fftInitBuf, *fftSpecBuf;
+  ippsFFTGetSize_C_32fc(order, vecFFT_NoReNorm, vecAlgHintFast, &sizeFFTSpec, &sizeFFTInitBuf, &wbufsize);
+  fftSpecBuf = ippsMalloc_8u(sizeFFTSpec);
+  fftInitBuf = ippsMalloc_8u(sizeFFTInitBuf);
+  fftbuffer = ippsMalloc_8u(wbufsize);
+  // Initialize
+  ippsFFTInit_C_32fc(&pFFTSpecC, order, vecFFT_NoReNorm, vecAlgHintFast, fftSpecBuf, fftInitBuf);
+  if (fftInitBuf) ippFree(fftInitBuf);
+  
+  // also fractional sample correction arrays, etc etc
 }
 
 FxKernel::~FxKernel()
@@ -86,10 +119,13 @@ FxKernel::~FxKernel()
     for(int j=0;j<2;j++)
     {
       vectorFree(unpacked[i][j]);
+      vectorFree(channelised[i][j]);
     }
     delete [] unpacked[i];
+    delete [] channelised[i];
   }
   delete [] unpacked;
+  delete [] channelised;
 
   vectorFree(subtoff);
   vectorFree(subtval);
@@ -139,6 +175,7 @@ void FxKernel::process()
       fringerotate(unpacked[j], delays[j][i], delays[j][i+1]);
 
       // Channelise
+      dofft(unpacked[j], channelised[j]);
     
       // Fractional sample correct
       
@@ -149,7 +186,7 @@ void FxKernel::process()
     {
       for(int k=j+1;k<numantennas;k++)
       {
-        // cross multiply + accumultae
+        // cross multiply + accumulate
 
       }
     }
@@ -218,4 +255,20 @@ void FxKernel::fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2)
     if(status != vecNoErr)
       fprintf(stderr, "Error doing the time-saving complex multiplication!!!\n");
   }
+}
+
+void FxKernel::dofft(cf32 ** unpacked, cf32 ** channelised) {
+  // Do a single FFT on the 2 pols for a single antenna
+  vecStatus status;
+  
+  
+  for (int i=0; i<2; i++) {
+    status = vectorFFT_CtoC_cf32(unpacked[i], channelised[i], pFFTSpecC, fftbuffer);
+    if(status != vecNoErr) {
+      std::cerr << "Error calling FFT" << std::endl;
+      exit(1);
+    }
+  }
+
+
 }
