@@ -69,12 +69,12 @@ private:
   u8 * fftbuffer;
   vecFFTSpecC_cf32 * pFFTSpecC;
 
-
   // other constants
   int numantennas;
   int numchannels;
   int numffts;  // i.e., the length of a subint
-  int fftchannels; //2*nchan, since we're assuming real data
+  int fftchannels; // 2*nchan for real data, nchan for complex
+  int nbaselines; // Number of baselines (nant*(nant-1)/2)
   int stridesize; // used for the time-saving complex multiplications
   double lofreq; // in Hz
   double bandwidth; // in Hz

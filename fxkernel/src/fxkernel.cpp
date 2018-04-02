@@ -96,7 +96,7 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
     for(int j=0;j<2;j++)
     {
       channelised[i][j] = vectorAlloc_cf32(fftchannels);
-      conjchannels[i][j] = vectorAlloc_cf32(fftchannels);
+      conjchannels[i][j] = vectorAlloc_cf32(nchan);
     }
   }
   
@@ -109,6 +109,16 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
   // Initialize
   ippsFFTInit_C_32fc(&pFFTSpecC, order, vecFFT_NoReNorm, vecAlgHintFast, fftSpecBuf, fftInitBuf);
   if (fftInitBuf) ippFree(fftInitBuf);
+
+  // Visibilities
+  nbaselines = nant*(nant-1)/2;
+  visibilities =  new cf32**[nbaselines];
+  for(int i=0;i<nbaselines;i++) {
+    visibilities[i] = new cf32*[4]; // 2 pols and crosspol
+    for(int j=0; j<4; j++) {
+      visibilities[i][j] = vectorAlloc_cf32(nchan);
+    }
+  }
   
   // also fractional sample correction arrays, etc etc
 }
@@ -128,6 +138,16 @@ FxKernel::~FxKernel()
   }
   delete [] unpacked;
   delete [] channelised;
+
+  for(int i=0;i<nbaselines;i++)
+  {
+    for(int j=0;j<4;j++)
+    {
+      vectorFree(visibilities[i][j]);
+    }
+    delete [] visibilities[i];
+  }
+  delete [] visibilities;
 
   vectorFree(subtoff);
   vectorFree(subtval);
@@ -163,6 +183,13 @@ void FxKernel::setDelays(double ** d)
 
 void FxKernel::process()
 {
+  // Zero visibilities
+  for (int i=0;i<nbaselines; i++) {
+    for (int j=0; j<4; j++) {
+      vectorZero_cf32(visibilities[i][j], numchannels);
+    }
+  }
+  
   // for(number of FFTs)... (parallelised via pthreads?)
   for(int i=0;i<numffts;i++)
   {
@@ -188,13 +215,23 @@ void FxKernel::process()
       conjChannels(channelised[j], conjchannels[j]);
     }
 
-    // then do the baseline based processing
+    // then do the baseline based processing   (CJP: What about autos)
+    int b = 0; // Baseline number
     for(int j=0;j<numantennas-1;j++)
     {
       for(int k=j+1;k<numantennas;k++)
       {
-        // cross multiply + accumulate
-
+	int p = 0; //Polarisation
+	for(int l=0;l<2;l++)
+	{
+	  for(int m=0;m<2;m++)
+	  {
+	  // cross multiply + accumulate
+	    vectorAddProduct_cf32(channelised[j][l], conjchannels[k][m], visibilities[b][p], numchannels);
+	    p++;
+	  }
+	}
+	b++;
       }
     }
   }
@@ -282,7 +319,7 @@ void FxKernel::conjChannels(cf32 ** channelised, cf32 ** conjchannels) {
   vecStatus status;
   
   for (int i=0; i<2; i++) {
-    status = vectorConj_cf32(channelised[i], conjchannels[i], fftchannels); // This is slightly wasteful for the real case
+    status = vectorConj_cf32(channelised[i], conjchannels[i], numchannels); // Assumes USB and throws away 1 channel for real data
     if(status != vecNoErr) {
       std::cerr << "Error calling vectorConj" << std::endl;
       exit(1);

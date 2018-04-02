@@ -38,6 +38,7 @@
 #define vectorMulC_f64(src, val, dest, length)                              ippsMulC_64f(src, val, dest, length)
 #define vectorRealToComplex_f32(real, imag, complex, length)                ippsRealToCplx_32f(real, imag, complex, length)
 #define vectorSinCos_f32(src, sin, cos, length)                             ippsSinCos_32f_A11(src, sin, cos, length)
+#define vectorZero_cf32(dest, length)                                       ippsZero_32fc(dest, length)
 
 /* FFT routines */
 #define vecFFT_NoReNorm          IPP_FFT_NODIV_BY_ANY
