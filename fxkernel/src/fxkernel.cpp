@@ -88,12 +88,15 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
     order++;
 
   channelised = new cf32**[nant];
+  conjchannels = new cf32**[nant];
   for(int i=0;i<nant;i++)
   {
     channelised[i] = new cf32*[2];
+    conjchannels[i] = new cf32*[2];
     for(int j=0;j<2;j++)
     {
       channelised[i][j] = vectorAlloc_cf32(fftchannels);
+      conjchannels[i][j] = vectorAlloc_cf32(fftchannels);
     }
   }
   
@@ -176,9 +179,13 @@ void FxKernel::process()
 
       // Channelise
       dofft(unpacked[j], channelised[j]);
+
+      // If original data was real voltages, required channels will fill n/2+1 of the n channels.
     
       // Fractional sample correct
-      
+
+      // Calculate complex conjugate once, fort efficency
+      conjChannels(channelised[j], conjchannels[j]);
     }
 
     // then do the baseline based processing
@@ -261,7 +268,6 @@ void FxKernel::dofft(cf32 ** unpacked, cf32 ** channelised) {
   // Do a single FFT on the 2 pols for a single antenna
   vecStatus status;
   
-  
   for (int i=0; i<2; i++) {
     status = vectorFFT_CtoC_cf32(unpacked[i], channelised[i], pFFTSpecC, fftbuffer);
     if(status != vecNoErr) {
@@ -269,6 +275,18 @@ void FxKernel::dofft(cf32 ** unpacked, cf32 ** channelised) {
       exit(1);
     }
   }
-
-
 }
+
+void FxKernel::conjChannels(cf32 ** channelised, cf32 ** conjchannels) {
+  // To avoid calculating this multiple times, gerate the complex conjugate of the channelised data 
+  vecStatus status;
+  
+  for (int i=0; i<2; i++) {
+    status = vectorConj_cf32(channelised[i], conjchannels[i], fftchannels); // This is slightly wasteful for the real case
+    if(status != vecNoErr) {
+      std::cerr << "Error calling vectorConj" << std::endl;
+      exit(1);
+    }
+  }
+}
+

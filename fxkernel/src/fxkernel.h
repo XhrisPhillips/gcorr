@@ -20,6 +20,9 @@ private:
 
   /* Method to channelised (FFT) the data, not in place */
   void dofft(cf32 ** unpacked, cf32 ** channelised);
+
+  /* Method to calculate complex conjugate of thje channelised data */
+  void conjChannels(cf32 ** channelised, cf32 ** conjchannels);
   
   // input data array
   u8 ** inputdata;
@@ -27,8 +30,9 @@ private:
   // unpacked data
   cf32 *** unpacked;
 
-  // channelised data
+  // channelised data, and conjugated values
   cf32 *** channelised;
+  cf32 *** conjchannels;
 
   // output data array
   cf32 *** visibilities;

@@ -32,6 +32,7 @@
 /* Vector functions, ordered alphabetically */
 #define vectorAddC_f64_I(val, srcdest, length)                              ippsAddC_64f_I(val, srcdest, length)
 #define vectorAddProduct_cf32(src1, src2, accumulator, length)              ippsAddProduct_32fc(src1, src2, accumulator, length)
+#define vectorConj_cf32(src, dest, length)                                  ippsConj_32fc(src, dest, length)
 #define vectorMul_cf32(src1, src2, dest, length)                            ippsMul_32fc(src1, src2, dest, length)
 #define vectorMulC_cf32(src, val, dest, length)                             ippsMulC_32fc(src, val, dest, length)
 #define vectorMulC_f64(src, val, dest, length)                              ippsMulC_64f(src, val, dest, length)
