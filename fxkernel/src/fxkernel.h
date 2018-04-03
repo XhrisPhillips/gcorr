@@ -5,7 +5,7 @@
 
 class FxKernel{
 public:
-  FxKernel(int nant, int nchan, int nfft, double localosc, double bw);
+  FxKernel(int nant, int nchan, int nfft, int numbits, double localosc, double bw);
   ~FxKernel();
   void setInputData(u8 ** idata);
   void setDelays(double ** d);
@@ -86,6 +86,7 @@ private:
   // other constants
   int numantennas;
   int numchannels;
+  int nbits;  // Number of bits for voltage samples
   int numffts;  // i.e., the length of a subint
   int fftchannels; // 2*nchan for real data, nchan for complex
   int nbaselines; // Number of baselines (nant*(nant-1)/2)
@@ -98,3 +99,4 @@ private:
   bool iscomplex;  // Is the original data real or complex voltages
   int cfact;
 };
+

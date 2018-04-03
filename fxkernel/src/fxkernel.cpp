@@ -13,8 +13,25 @@
 // completely independent instances of FxKernel (probably easier)?
 // Suggest that we force the nchan to be a power of 2 to make the striding complex multiplication for phase rotations easy
 // I'm also suggesting that we unpack directly to a complex array, to make the subsequent fringe rotation easier
-FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
-  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
+
+static cf32 lut2bit[256][4];
+
+void initLUT2bitReal () {
+  static const float HiMag = 3.3359;  // Optimal value
+  const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
+  
+  int l;
+  for (int b = 0; b < 256; b++)	{
+    for (int i = 0; i < 4; i++) {
+      l = (b >> (2*i)) & 0x03;
+      lut2bit[b][i].re = lut4level[l];
+      lut2bit[b][i].im = 0;
+    }
+  }
+}
+
+FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double bw)
+  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), nbits(numbits), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
 {
   iscomplex = 0; // Allow for further generalisation later
   if (iscomplex)
@@ -25,6 +42,18 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, double lo, double bw)
   else
   {
     cfact = 1;
+  }
+
+  // Check for consistency and initialise lookup tables, if required.
+  if (nbits==2) {
+    if (fftchannels % 2) {
+      std::cerr << "Error: FFT length must be divisible by 2 for 2 bit data. Aborting" << std::endl;  // 2 samples, 2 pols per byte
+      exit(1);
+    }
+    initLUT2bitReal();
+  } else if (nbits!=8) {
+    std::cerr << "Error: Do not support " << nbits << " bits. Aborting" << std::endl;  //
+    exit(1);
   }
   
   // Figure out the array stride size
@@ -323,8 +352,29 @@ void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, do
   meandelay = a*0.5 + b;
 }
 
+void unpackReal2bit(u8 * inputdata, cf32 ** unpacked, int offset, int nsamp) {
+  cf32 *fp;
+
+  u8 *byte = &inputdata[offset];
+  for (int o=0; o<nsamp; o++) { // 2 time samples/byte
+    fp = lut2bit[*byte];  // pointer to vector of 4 complex floats
+    byte++;               // move pointer to next byte for next iteration of loop
+    unpacked[0][o] = fp[0];
+    unpacked[1][o] = fp[1];
+    o++;
+    unpacked[0][o] = fp[2];
+    unpacked[1][o] = fp[3];
+  }
+}
+
 void FxKernel::unpack(u8 * inputdata, cf32 ** unpacked, int offset)
-{}
+{
+  if (nbits==2) {
+    unpackReal2bit(inputdata, unpacked, offset, fftchannels);
+  } else {
+    std::cerr << "Unsupported number of bits!!!" << std::endl;
+  }
+}
 
 void FxKernel::fringerotate(cf32 ** unpacked, f64 a, f64 b)
 {

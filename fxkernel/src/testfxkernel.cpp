@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 
   // create the FxKernel
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
-  FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, lo, bandwidth);
+  FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth);
 
   for (i=0; i<nsubint; i++) {
 
