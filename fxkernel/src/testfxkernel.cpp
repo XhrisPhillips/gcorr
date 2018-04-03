@@ -3,14 +3,18 @@
 #include "fxkernel.h"
 #include "vectordefs.h"
 
-void allocData(u8 ***data, int numantenna, int numchannels, int numffts, int nbit, int nsubint) {
+void allocData(u8 ***data, double *** delays, int numantenna, int numchannels, int numffts, int nbit, int nsubint)
+{
   int i, cfactor;
 
   int iscomplex = 0;
   int nPol = 2;
-  if (iscomplex) {
+  if (iscomplex)
+  {
     cfactor = 1;
-  } else {
+  }
+  else
+  {
     cfactor = 2; // If real data FFT size twice size of number of frequecy channels
   }
   
@@ -20,8 +24,11 @@ void allocData(u8 ***data, int numantenna, int numchannels, int numffts, int nbi
 
 
   *data = new u8*[numantenna];
-  for (i=0; i<numantenna; i++) {
+  *delays = new double*[numantenna];
+  for (i=0; i<numantenna; i++)
+  {
     (*data)[i] = new u8[bytespersubint*nsubint];
+    (*delays)[i] = new double[3]; //assume we're going to read a second-order polynomial for each antenna
   }
 }
 
@@ -35,10 +42,6 @@ int main(int argc, char *argv[])
   int numchannels, numantennas, numffts, nbit, nsubint;
   double lo, bandwidth;
 
-  // load up the test input data from somewhere
-  
-  // Load up the delays from somewhere
-
   // Set the inputs we'll use as a test
   // Current values would give a subint of 100ms, which is fairly reasonable
   nbit = 2;
@@ -49,7 +52,14 @@ int main(int argc, char *argv[])
   bandwidth = 32000000.0;
   nsubint = 10;
 
-  allocData(&inputdata, numantennas, numchannels, numffts, nbit, nsubint);
+  // Allocate space in the buffers for the data and the delays
+  allocData(&inputdata, &delays, numantennas, numchannels, numffts, nbit, nsubint);
+
+  // load up the test input data from somewhere
+
+  // Load up the delays from somewhere - these should be a 2nd order polynomial per antenna
+  // with the x value being in units of FFTs.
+
 
   // create the FxKernel
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
@@ -70,8 +80,11 @@ int main(int argc, char *argv[])
   // Calculate the elapsed time
 
   // Free memory
-   for (i=0; i<numantennas; i++) {
-     delete(inputdata[i]);
+  for (i=0; i<numantennas; i++)
+  {
+    delete(inputdata[i]);
+    delete(delays[i]);
   }
-   delete(inputdata);
+  delete(inputdata);
+  delete(delays);
 }

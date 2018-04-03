@@ -15,19 +15,25 @@ private:
   /* Method to unpack the coarsely quantised input data to complex floats */
   void unpack(u8 * inputdata, cf32 ** unpacked, int offset);
 
+  /* Method to get the station delay for a given station for a given FFT */
+  void getStationDelay(int antenna, int fftindex, double & meandelay, double a, double b);
+
   /* Method to fringe rotate the unpacked data in place */
-  void fringerotate(cf32 ** unpacked, f64 delay1, f64 delay2);
+  void fringerotate(cf32 ** unpacked, f64 a, f64 b);
 
   /* Method to channelised (FFT) the data, not in place */
   void dofft(cf32 ** unpacked, cf32 ** channelised);
 
-  /* Method to calculate complex conjugate of thje channelised data */
+  /* Method to calculate complex conjugate of the channelised data */
   void conjChannels(cf32 ** channelised, cf32 ** conjchannels);
+
+  /* Method to correct fractional sample delay of the channelised data in-place */
+  void fracSampleCorrect(cf32 ** channelised, f64 fracdelay);
   
   // input data array
   u8 ** inputdata;
 
-  // unpacked data
+  // unpacked data (fringe rotation is performed in-place here)
   cf32 *** unpacked;
 
   // channelised data, and conjugated values
@@ -37,7 +43,7 @@ private:
   // output data array
   cf32 *** visibilities;
 
-  // delay polynomial for each antenna
+  // delay polynomial for each antenna.  Referenced to the first sample of the block of data.
   double ** delays;
 
   // internal arrays
@@ -49,7 +55,6 @@ private:
   f32 * subarg;
   f32 * subsin;
   f32 * subcos;
-  f32 * subchannelfreqs;
 
   f64 * steptoff;
   f64 * steptval;
@@ -59,11 +64,20 @@ private:
   f32 * steparg;
   f32 * stepsin;
   f32 * stepcos;
-  f32 * stepchannelfreqs;
   cf32 * stepcplx;
   cf32 * complexrotator;
-  cf32 ** fracsamp1;
-  cf32 ** fracsamp2;
+
+  f32 * subfracsamparg;
+  f32 * subfracsampsin;
+  f32 * subfracsampcos;
+  f32 * subchannelfreqs;
+
+  f32 * stepfracsamparg;
+  f32 * stepfracsampsin;
+  f32 * stepfracsampcos;
+  cf32 * stepfracsampcplx;
+  f32 * stepchannelfreqs;
+  cf32 * fracsamprotator;
 
   // FFTs
   u8 * fftbuffer;
@@ -76,6 +90,7 @@ private:
   int fftchannels; // 2*nchan for real data, nchan for complex
   int nbaselines; // Number of baselines (nant*(nant-1)/2)
   int stridesize; // used for the time-saving complex multiplications
+  int substridesize; // used for the time-saving complex multiplications.  Equal to stridesize for complex data, or 2x stride size for real data
   double lofreq; // in Hz
   double bandwidth; // in Hz
   double sampletime; //in seconds
