@@ -38,6 +38,7 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
   {
     cfact = 2;
     fftchannels /= 2;
+    sampletime *= 2;
   }
   else
   {
@@ -282,8 +283,12 @@ void FxKernel::process()
 
       // unpack
       getStationDelay(j, i, meandelay, delaya, delayb);
-      sampledelay = int(meandelay + 0.5);
-      fractionaldelay = meandelay - sampledelay;
+      double delayinsamples = meandelay / sampletime;
+      sampledelay = int(delayinsamples + 0.5);
+      
+      std::cout << "Sample delay = " << delayinsamples << std::endl;
+      
+      fractionaldelay = delayinsamples - sampledelay;
       offset = i*fftchannels - sampledelay;
       if(offset < 0) 
       {
@@ -335,7 +340,7 @@ void FxKernel::process()
   }
 }
 
-void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, double a, double b)
+void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, double & a, double & b)
 {
   double * interpolator = delays[antenna];
   double d0, d1, d2;

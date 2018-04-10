@@ -15,7 +15,7 @@ using std::vector;
 #include "fxkernel.h"
 #include "vectordefs.h"
 
-void allocData(u8 ***data, double *** delays, int numantenna, int numchannels, int numffts, int nbit, int &subintbytes)
+void allocData(u8 ***data, int numantenna, int numchannels, int numffts, int nbit, int &subintbytes)
 {
   int i, cfactor;
 
@@ -36,16 +36,14 @@ void allocData(u8 ***data, double *** delays, int numantenna, int numchannels, i
 
 
   *data = new u8*[numantenna];
-  *delays = new double*[numantenna];
   for (i=0; i<numantenna; i++)
   {
     (*data)[i] = new u8[subintbytes];
-    (*delays)[i] = new double[3]; //assume we're going to read a second-order polynomial for each antenna
   }
 }
 
 void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant, double &lo, double &bandwidth,
-		 int &numffts, vector<string>& antenna, vector<string>& antFiles ) {
+		 int &numffts, vector<string>& antenna, vector<string>& antFiles, double ***delays) {
 
   std::ifstream fconfig(config);
 
@@ -60,10 +58,16 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       exit(1);
     }
     if (anttoread) {
+      cout << "Ant " << iant << endl;
+      cout << "    " << line << endl;
       string thisfile;
       iss >> thisfile;
       antenna.push_back(keyword);
       antFiles.push_back(thisfile);
+      (*delays)[iant] = new double[3]; //assume we're going to read a second-order polynomial for each antenna
+      for (int i=0;i<3;i++) {
+	iss >> (*delays)[iant][i];  // Error checking needed
+      }
       iant++;
       anttoread--;
     } else if (strcasecmp(keyword.c_str(), "COMPLEX")==0) {
@@ -80,6 +84,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       iss >> numffts; // Should error check
     } else if (strcasecmp(keyword.c_str(), "NANT")==0) {
       iss >> nant; // Should error check
+      *delays = new double*[nant]; // Alloc memory for delay buffer
       anttoread = nant;
       iant = 0;
     } else {
@@ -88,16 +93,15 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
   }
 }
 
-
 int readdata(int bytestoread, vector<std::fstream*> &antStream, u8 **inputdata) {
   for (int i=0; i<antStream.size(); i++) {
-    (*antStream[i]).read((char*)inputdata[i], bytestoread);
-    if (! *antStream[i]) {
+    antStream[i]->read((char*)inputdata[i], bytestoread);
+    if (! *(antStream[i])) {
       if (antStream[i]->eof())    {
-	return(2);
+    	return(2);
       } else {
-	cerr << "Error: Problem reading data" << endl;
-	return(1);
+    	cerr << "Error: Problem reading data" << endl;
+    	return(1);
       }
     }
   }
@@ -125,7 +129,7 @@ int main(int argc, char *argv[])
 
   configfile = argv[1];
 
-  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles);
+  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
 
   cout << "Got COMPLEX " << iscomplex << endl;
   cout << "Got NBIT " << nbit << endl;
@@ -138,12 +142,11 @@ int main(int argc, char *argv[])
   }
     
   // Allocate space in the buffers for the data and the delays
-  allocData(&inputdata, &delays, numantennas, numchannels, numffts, nbit, subintbytes);
+  allocData(&inputdata, numantennas, numchannels, numffts, nbit, subintbytes);
 
   //openFiles(antennas, antFiles, antStream);
   for (int i=0; i<numantennas; i++) {
-    std::fstream thisfile(antFiles[i], std::ios::in | std::ios::binary );
-    antStream.push_back(&thisfile);
+    antStream.push_back(new std::fstream(antFiles[i], std::ios::in | std::ios::binary));
   }
 
   // load up the test input data from somewhere
@@ -159,20 +162,20 @@ int main(int argc, char *argv[])
   fxkernel.setInputData(inputdata);
 
   int status;
-  while (1) {
-    status = readdata(subintbytes, antStream, inputdata);
-    if (status) break;
 
-    // Set the delays
-    fxkernel.setDelays(delays);
+  // One loop for now
+  status = readdata(subintbytes, antStream, inputdata);
+  if (status) exit(1);
 
-    // Checkpoint for timing
+  // Set the delays
+  fxkernel.setDelays(delays);
+
+  // Checkpoint for timing
   
-    // Run the processing
-    fxkernel.process();
+  // Run the processing
+  fxkernel.process();
 
-    // Do somethung with subint
-  }
+  // Do somethung with subint
 
   // Calculate the elapsed time
 

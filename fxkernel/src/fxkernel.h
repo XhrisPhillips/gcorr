@@ -16,7 +16,7 @@ private:
   void unpack(u8 * inputdata, cf32 ** unpacked, int offset);
 
   /* Method to get the station delay for a given station for a given FFT */
-  void getStationDelay(int antenna, int fftindex, double & meandelay, double a, double b);
+  void getStationDelay(int antenna, int fftindex, double & meandelay, double & a, double & b);
 
   /* Method to fringe rotate the unpacked data in place */
   void fringerotate(cf32 ** unpacked, f64 a, f64 b);
