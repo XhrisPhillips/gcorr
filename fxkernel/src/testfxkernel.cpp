@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 #include <strings.h>
 #include <string.h>
 
@@ -9,11 +10,12 @@ using std::string;
 using std::cout;
 using std::cerr;
 using std::endl;
+using std::vector;
 
 #include "fxkernel.h"
 #include "vectordefs.h"
 
-void allocData(u8 ***data, double *** delays, int numantenna, int numchannels, int numffts, int nbit, int nsubint)
+void allocData(u8 ***data, double *** delays, int numantenna, int numchannels, int numffts, int nbit, int &subintbytes)
 {
   int i, cfactor;
 
@@ -28,22 +30,22 @@ void allocData(u8 ***data, double *** delays, int numantenna, int numchannels, i
     cfactor = 2; // If real data FFT size twice size of number of frequecy channels
   }
   
-  int bytespersubint = numchannels*cfactor*numffts*nbit/8*nPol;
-  cout << "Allocating " << bytespersubint/1024/1024 << " MB per antenna per subint" << endl;
-  cout << "          " << bytespersubint * numantenna * nsubint / 1024 / 1024 << " MB total" << endl;
+  subintbytes = numchannels*cfactor*numffts*nbit/8*nPol;
+  cout << "Allocating " << subintbytes/1024/1024 << " MB per antenna per subint" << endl;
+  cout << "          " << subintbytes * numantenna / 1024 / 1024 << " MB total" << endl;
 
 
   *data = new u8*[numantenna];
   *delays = new double*[numantenna];
   for (i=0; i<numantenna; i++)
   {
-    (*data)[i] = new u8[bytespersubint*nsubint];
+    (*data)[i] = new u8[subintbytes];
     (*delays)[i] = new double[3]; //assume we're going to read a second-order polynomial for each antenna
   }
 }
 
 void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant, double &lo, double &bandwidth,
-		 char ***antenna, char ***antFiles ) {
+		 int &numffts, vector<string>& antenna, vector<string>& antFiles ) {
 
   std::ifstream fconfig(config);
 
@@ -58,12 +60,10 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       exit(1);
     }
     if (anttoread) {
-      (*antenna)[iant] = new char[keyword.length()+1];
-      strcpy((*antenna)[iant],keyword.c_str());
       string thisfile;
       iss >> thisfile;
-      (*antFiles)[iant] = new char[thisfile.length()+1];
-      strcpy((*antFiles)[iant],thisfile.c_str());
+      antenna.push_back(keyword);
+      antFiles.push_back(thisfile);
       iant++;
       anttoread--;
     } else if (strcasecmp(keyword.c_str(), "COMPLEX")==0) {
@@ -76,10 +76,10 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       iss >> lo; // Should error check
     } else if (strcasecmp(keyword.c_str(), "BANDWIDTH")==0) {
       iss >> bandwidth; // Should error check
+    } else if (strcasecmp(keyword.c_str(), "NUMFFTS")==0) {
+      iss >> numffts; // Should error check
     } else if (strcasecmp(keyword.c_str(), "NANT")==0) {
       iss >> nant; // Should error check
-      *antenna = new char*[nant];
-      *antFiles = new char*[nant];
       anttoread = nant;
       iant = 0;
     } else {
@@ -89,17 +89,34 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
 }
 
 
+int readdata(int bytestoread, vector<std::fstream*> &antStream, u8 **inputdata) {
+  for (int i=0; i<antStream.size(); i++) {
+    (*antStream[i]).read((char*)inputdata[i], bytestoread);
+    if (! *antStream[i]) {
+      if (antStream[i]->eof())    {
+	return(2);
+      } else {
+	cerr << "Error: Problem reading data" << endl;
+	return(1);
+      }
+    }
+  }
+  return(0);
+}
+
+
 int main(int argc, char *argv[])
 {
   // variables for the test
   char *configfile;
-  int i;
+  int i, subintbytes;
   u8 ** inputdata;
   double ** delays;
-  int numchannels, numantennas, numffts, nbit, nsubint;
+  int numchannels, numantennas, numffts, nbit;
   double lo, bandwidth;
   bool iscomplex;
-  char **antennas, **antFiles;
+  vector<string> antennas, antFiles;
+  vector<std::fstream *> antStream;
 
   if (argc!=2) {
     cout << "Usage:  testfxkernel <config>\n" << endl;
@@ -108,7 +125,7 @@ int main(int argc, char *argv[])
 
   configfile = argv[1];
 
-  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, &antennas, &antFiles);
+  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles);
 
   cout << "Got COMPLEX " << iscomplex << endl;
   cout << "Got NBIT " << nbit << endl;
@@ -120,21 +137,14 @@ int main(int argc, char *argv[])
     cout << "  " << antennas[i] << ":" << antFiles[i] << endl;
   }
     
-
-  
-  exit(1);
-  // Set the inputs we'll use as a test
-  // Current values would give a subint of 100ms, which is fairly reasonable
-  //nbit = 2;
-  //numchannels = 1024;
-  //numantennas = 6;
-  numffts = 3125;
-  //lo = 1650000000.0;
-  //bandwidth = 32000000.0;
-  nsubint = 10;
-
   // Allocate space in the buffers for the data and the delays
-  allocData(&inputdata, &delays, numantennas, numchannels, numffts, nbit, nsubint);
+  allocData(&inputdata, &delays, numantennas, numchannels, numffts, nbit, subintbytes);
+
+  //openFiles(antennas, antFiles, antStream);
+  for (int i=0; i<numantennas; i++) {
+    std::fstream thisfile(antFiles[i], std::ios::in | std::ios::binary );
+    antStream.push_back(&thisfile);
+  }
 
   // load up the test input data from somewhere
 
@@ -146,16 +156,22 @@ int main(int argc, char *argv[])
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
   FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth);
 
-  for (i=0; i<nsubint; i++) {
+  fxkernel.setInputData(inputdata);
 
-    // Set the input data and the delays
-    fxkernel.setInputData(inputdata);
+  int status;
+  while (1) {
+    status = readdata(subintbytes, antStream, inputdata);
+    if (status) break;
+
+    // Set the delays
     fxkernel.setDelays(delays);
 
     // Checkpoint for timing
   
     // Run the processing
     fxkernel.process();
+
+    // Do somethung with subint
   }
 
   // Calculate the elapsed time
