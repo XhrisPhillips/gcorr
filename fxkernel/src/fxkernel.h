@@ -10,6 +10,7 @@ public:
   void setInputData(u8 ** idata);
   void setDelays(double ** d);
   void process();
+  void accumulate(cf32 *** odata);
 
 private:
   /* Method to unpack the coarsely quantised input data to complex floats */
