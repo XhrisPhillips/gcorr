@@ -340,6 +340,17 @@ void FxKernel::process()
   }
 }
 
+void FxKernel::accumulate(cf32 *** odata)
+{
+  for (int i=0; i<nbaselines; i++)
+  {
+    for (int j=0; j<4; j++)
+    {
+      vectorAdd_cf32_I(visibilities[i][j], odata[i][j], numchannels);
+    }
+  }
+}
+
 void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, double & a, double & b)
 {
   double * interpolator = delays[antenna];

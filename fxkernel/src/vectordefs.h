@@ -30,6 +30,7 @@
 #define vectorFree(memptr)       ippsFree(memptr)
 
 /* Vector functions, ordered alphabetically */
+#define vectorAdd_cf32_I(src, srcdest, length)                              ippsAdd_32fc_I(src, srcdest, length)
 #define vectorAddC_f64_I(val, srcdest, length)                              ippsAddC_64f_I(val, srcdest, length)
 #define vectorAddProduct_cf32(src1, src2, accumulator, length)              ippsAddProduct_32fc(src1, src2, accumulator, length)
 #define vectorConj_cf32(src, dest, length)                                  ippsConj_32fc(src, dest, length)
