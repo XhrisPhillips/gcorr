@@ -3,8 +3,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <strings.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 
 using std::string;
 using std::cout;
@@ -57,7 +57,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
     string keyword;
     if (!(iss >> keyword)) {
       cerr << "Error: Could not parse \"" << line << "\"" << endl;
-      exit(1);
+      std::exit(1);
     }
     if (anttoread) {
       string thisfile;
@@ -89,7 +89,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
 }
 
 
-int readdata(int bytestoread, vector<std::fstream*> &antStream, u8 **inputdata) {
+int readdata(int bytestoread, vector<std::ifstream*> &antStream, u8 **inputdata) {
   for (int i=0; i<antStream.size(); i++) {
     (*antStream[i]).read((char*)inputdata[i], bytestoread);
     if (! *antStream[i]) {
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
   double lo, bandwidth;
   bool iscomplex;
   vector<string> antennas, antFiles;
-  vector<std::fstream *> antStream;
+  vector<std::ifstream *> antStream;
 
   if (argc!=2) {
     cout << "Usage:  testfxkernel <config>\n" << endl;
@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
 
   //openFiles(antennas, antFiles, antStream);
   for (int i=0; i<numantennas; i++) {
-    std::fstream thisfile(antFiles[i], std::ios::in | std::ios::binary );
+    std::ifstream thisfile(antFiles[i].c_str(), std::ios::binary);
     antStream.push_back(&thisfile);
   }
 
