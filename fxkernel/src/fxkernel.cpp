@@ -45,7 +45,7 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
   {
     cfact = 1;
   }
-
+  
   std::cout << "Subint time is " << sampletime*fftchannels*numffts*1000.0 << " msec" << std::endl;
 
   // Check for consistency and initialise lookup tables, if required.
@@ -61,8 +61,8 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
   }
   
   // Figure out the array stride size
-  stridesize = (int)sqrt(nchan);
-  if(stridesize*stridesize != nchan)
+  stridesize = (int)sqrt(numchannels);
+  if(stridesize*stridesize != numchannels)
   {
     std::cerr << "Please choose a number of channels that is a square" << std::endl;
     exit(1);
@@ -125,7 +125,7 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
   {
     order++;
   }
-
+  
   channelised = new cf32**[nant];
   conjchannels = new cf32**[nant];
   for(int i=0;i<nant;i++)
@@ -135,7 +135,7 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
     for(int j=0;j<2;j++)
     {
       channelised[i][j] = vectorAlloc_cf32(fftchannels);
-      conjchannels[i][j] = vectorAlloc_cf32(nchan);
+      conjchannels[i][j] = vectorAlloc_cf32(numchannels);
     }
   }
   
@@ -157,7 +157,7 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
     visibilities[i] = new cf32*[4]; // 2 pols and crosspol
     for(int j=0; j<4; j++)
     {
-      visibilities[i][j] = vectorAlloc_cf32(nchan);
+      visibilities[i][j] = vectorAlloc_cf32(numchannels);
     }
   }
   
@@ -176,13 +176,14 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
   // populate the channel frequency arrays
   for(int i=0;i<stridesize;i++)
   {
-    subchannelfreqs[i] = (float)((TWO_PI*i*bandwidth)/(double)nchan);
-    stepchannelfreqs[i] = (float)((TWO_PI*i*stridesize*bandwidth)/(double)nchan);
+    subchannelfreqs[i] = (float)((TWO_PI*i*bandwidth)/(double)numchannels);
+    stepchannelfreqs[i] = (float)((TWO_PI*i*stridesize*bandwidth)/(double)numchannels);
   }
 }
 
 FxKernel::~FxKernel()
 {
+
   //de-allocate the internal arrays
   for(int i=0;i<numantennas;i++)
   {
@@ -288,7 +289,7 @@ void FxKernel::process()
       getStationDelay(j, i, meandelay, delaya, delayb);
       double delayinsamples = meandelay / sampletime;
       sampledelay = int(delayinsamples + 0.5);
-      
+
       fractionaldelay = (delayinsamples - sampledelay)*sampletime;  // seconds
       offset = i*fftchannels - sampledelay;
       if(offset < 0) 
