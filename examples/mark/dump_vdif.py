@@ -45,6 +45,13 @@ while infp:
         pass
     t = time.mktime((year, month, 1, 0, 0, 0, -1, -1, -1))
     t += seconds
+
+    if not legacy:
+        header_size = 32
+        infp.read(16)
+        pass
+    buf = infp.read(length * 8 - header_size)
+
     if thread_id == 0 and t >= stop:
         break
     if thread_id == 0 and t >= start:
@@ -57,12 +64,6 @@ while infp:
             pass
         last_frame = frame
         last_t = t
-        #print station_id, thread_id, num_channels, bits_per_sample, time.ctime(t), frame, length, invalid        
+        outfp.write(buf)
         pass
-    if not legacy:
-        header_size = 32
-        infp.read(16)
-        pass
-    buf = infp.read(length * 8 - header_size)
-    outfp.write(buf)
     continue
