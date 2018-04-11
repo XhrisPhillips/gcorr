@@ -297,7 +297,7 @@ void FxKernel::process()
         if(offset == -1) // can happen due to difference in geometric delay between start of first FFT and middle of first FFT
         {
           offset += 1;
-          fractionaldelay += 1;
+          fractionaldelay += sampletime;
         }
         else // must have made a mistake with the delay polynomial
         {
@@ -355,45 +355,13 @@ void FxKernel::process()
 void FxKernel::saveVisibilities(const char * outfile) {
   f32 ***amp, ***phase;
 
-  std::ofstream fvis(outfile);
+  std::ofstream fvis(outfile, std::ios::binary);
   
-  amp =  new f32**[nbaselines];
-  phase =  new f32**[nbaselines];
   for (int i=0;i<nbaselines;i++)  {
-    amp[i] = new f32*[4]; // 2 pols and crosspol
-    phase[i] = new f32*[4]; // 2 pols and crosspol
     for (int j=0; j<4; j++) {
-      amp[i][j] = vectorAlloc_f32(numchannels);
-      phase[i][j] = vectorAlloc_f32(numchannels);
-      vectorMagnitude_cf32(visibilities[i][j], amp[i][j], numchannels);
-      vectorPhase_cf32(visibilities[i][j], phase[i][j], numchannels);
+      fvis.write(reinterpret_cast<char *>(visibilities[i][j]), numchannels * sizeof(cf32));
     }
   }
-
-  
-  for (int c=0; c<numchannels; c++) {
-    fvis << std::setw(5) << c << " " << std::setw(11) << std::fixed << std::setprecision(6) << (c+0.5)/numchannels*bandwidth/1e6;
-    fvis  << std::setprecision(5);
-    for (int i=0; i<1; i++) {
-      for (int j=0; j<4; j++) {
-	fvis << " " << std::setw(11) << visibilities[i][j][c].re << " " << std::setw(11) << visibilities[i][j][c].im;
-	fvis << " " << std::setw(11) << amp[i][j][c] << " " << std::setw(10) << phase[i][j][c];
-      }
-    }
-    fvis << std::endl;
-  }
-  fvis.close();
-  
-  for (int i=0;i<nbaselines;i++) {
-    for (int j=0;j<4;j++) {
-      vectorFree(amp[i][j]);
-      vectorFree(phase[i][j]);
-    }
-    delete [] amp[i];
-    delete [] phase[i];
-  }
-  delete [] amp;
-  delete [] phase;
 }
 
 void FxKernel::accumulate(cf32 *** odata)
@@ -410,13 +378,15 @@ void FxKernel::accumulate(cf32 *** odata)
 void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, double & a, double & b)
 {
   double * interpolator = delays[antenna];
+  double delta = fftchannels * sampletime;
+  double delta2 = delta * delta;
   double d0, d1, d2;
   int integerdelay;
 
   // calculate values at the beginning, middle, and end of this FFT
-  d0 = interpolator[0]*fftindex*fftindex + interpolator[1]*fftindex + interpolator[2];
-  d1 = interpolator[0]*(fftindex+0.5)*(fftindex+0.5) + interpolator[1]*(fftindex+0.5) + interpolator[2];
-  d2 = interpolator[0]*(fftindex+1.0)*(fftindex+1.0) + interpolator[1]*(fftindex+1.0) + interpolator[2];
+  d0 = interpolator[0]*delta*delta + interpolator[1]*delta + interpolator[2];
+  d1 = interpolator[0]*(fftindex+0.5)*(fftindex+0.5)*delta*delta + interpolator[1]*(fftindex+0.5)*delta + interpolator[2];
+  d2 = interpolator[0]*(fftindex+1.0)*(fftindex+1.0)*delta*delta + interpolator[1]*(fftindex+1.0)*delta + interpolator[2];
 
   // use these to calculate a linear interpolator across the FFT, as well as a mean value
   a = d2-d0;
@@ -424,6 +394,7 @@ void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, do
   meandelay = a*0.5 + b;
 }
 
+#if 0
 // 2 bit, 2 channel unpacker 
 void unpackReal2bit(u8 * inputdata, cf32 ** unpacked, int offset, int nsamp) {
   // inputdata     array of tightly packed 2bit samples, 4 samples (2 times, 2 channels) per byte. Channels are interleaved
@@ -459,6 +430,32 @@ void unpackReal2bit(u8 * inputdata, cf32 ** unpacked, int offset, int nsamp) {
     unpacked[1][o] = fp[1];
   }
 }
+#endif
+
+// 2 bit, 2 channel unpacker 
+void unpackReal2bit(u8 * inputdata, cf32 ** unpacked, int offset, int nsamp) {
+  // inputdata     array of tightly packed 2bit samples, 4 samples (2 times, 2 channels) per byte. Channels are interleaved
+  // unpacked      data as 2 complex float arrays
+  // offset        offset into array in SAMPLES
+  // nsamp         number of samples to unpack
+  cf32 *fp;
+
+  int o = 0;
+  int i = offset % 4;
+  u8 *byte = &inputdata[offset/4];
+  
+  for (; o<nsamp; o++) { // 2 time samples/byte
+    fp = lut2bit[*byte];  // pointer to vector of 4 complex floats
+    for (; i < 4 && o < nsamp; i++) {
+      unpacked[0][o] = fp[i];
+      unpacked[1][o] = fp[i];
+      o++;
+      i++;
+    }
+    byte++;               // move pointer to next byte for next iteration of loop
+    i = 0;
+  }
+}
 
 void FxKernel::unpack(u8 * inputdata, cf32 ** unpacked, int offset)
 {
@@ -475,7 +472,7 @@ void FxKernel::fringerotate(cf32 ** unpacked, f64 a, f64 b)
   int status;
 
   // subtract off any integer delay present
-  integerdelay = static_cast<int>(b);
+  integerdelay = static_cast<int>(b/sampletime) * sampletime;
   b -= integerdelay;
 
   // Fill in the delay values, using a and b and the precomputeed offsets
