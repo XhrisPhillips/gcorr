@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
 
   //openFiles(antennas, antFiles, antStream);
   for (int i=0; i<numantennas; i++) {
-    antStream.push_back(new std::ifstream(antFiles[i], std::ios::binary));
+    antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
   }
 
   // load up the test input data from somewhere
