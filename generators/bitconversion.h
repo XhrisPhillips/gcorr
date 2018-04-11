@@ -6,10 +6,10 @@
 extern Ipp32f lookup[4];
 
 void initlut();
-void unpack2bit(Ipp8u *in, Ipp32f *out, int n);
-void unpack8bit(Ipp8s *in, Ipp32f *out, int n);
-void unpack16bit(Ipp16s *in, Ipp32f *out, int n);
-void unpackFloat8(Ipp8u *in, Ipp32f *out, int n);
+void unpack2bit(Ipp8u *in, Ipp32f **out, int nchan, int n);
+void unpack8bit(Ipp8s *in, Ipp32f **out, int nchan, int n);
+void unpack16bit(Ipp16s *in, Ipp32f **out, int nchan, int n);
+void unpackFloat8(Ipp8u *in, Ipp32f **out, int nchan, int n);
 
 
 int packBit2(Ipp32f **in, Ipp8u *out, int nchan, float mean, float stddev, int len);

@@ -136,7 +136,7 @@ int main (int argc, char * const argv[]) {
   
   /* Read command line options */
   while (1) {
-    opt = getopt_long_only(argc, argv, "w:B:xb:d:m:M:y:t:n:c:T:hF:", options, NULL);
+    opt = getopt_long_only(argc, argv, "w:B:xb:d:m:M:y:t:n:c:T:hF:C:", options, NULL);
     if (opt==EOF) break;
     
 #define CASEINT(ch,var)                                     \
@@ -219,7 +219,6 @@ int main (int argc, char * const argv[]) {
   }
 
   int nchan = channels;
-
   if (argc==optind) {
     filename = strdup("Test.vdf");
   } else {
@@ -261,7 +260,6 @@ int main (int argc, char * const argv[]) {
     }
   } else if (nbits==0) {
     nbits=2;
-    printf("BITS=%d\n", nbits);
   }
   
   int cfact = 1;
@@ -278,7 +276,8 @@ int main (int argc, char * const argv[]) {
   // memsize needs to be integral number of complete samples
   // bufsamples is number of time samples/buffer
   int bufsamples = memsize/(sizeof(float)*cfact*nchan);
-  bufsamples = (bufsamples/sampleperbyte)*sampleperbyte;
+
+  bufsamples = (bufsamples/sampleperbyte)*sampleperbyte; // Make sure can pack evenly
 
   if (duration==0) { // Just create BUFSIZE bytes
     nbuf = 1;
@@ -413,7 +412,6 @@ int main (int argc, char * const argv[]) {
     stdDev[0] /= nchan;
 
     if (outData==INT) {
-      printf("BITS=%d\n", nbits);
       if (nbits==2) {
 	status = packBit2(data, outdata, nchan, mean[0], stdDev[0], bufsamples*cfact);
 	if (status) exit(1);
@@ -444,8 +442,6 @@ int main (int argc, char * const argv[]) {
   }
 
   close(outfile);
-
-  printf("CLosed outfile\n");
 
   free(filename);
   if (timestr!=NULL) free(timestr);

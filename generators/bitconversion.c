@@ -38,9 +38,9 @@ void initlut() {
   return;
 }
 
-void unpack8bit(Ipp8s *in, Ipp32f *out, int n) {
+void unpack8bit(Ipp8s *in, Ipp32f **out, int nchan, int n) {
   IppStatus status;
-  status =  ippsConvert_8s32f(in, out, n);
+  status =  ippsConvert_8s32f(in, out[0], n);
   if (status!=ippStsNoErr) {
     printf("ippsConvert_8s32f failed!\n");
     exit(1);
@@ -48,9 +48,9 @@ void unpack8bit(Ipp8s *in, Ipp32f *out, int n) {
   return;
 }
 
-void unpack16bit(Ipp16s *in, Ipp32f *out, int n) {
+void unpack16bit(Ipp16s *in, Ipp32f **out, int  nchan, int n) {
   IppStatus status;
-  status =  ippsConvert_16s32f(in, out, n);
+  status =  ippsConvert_16s32f(in, out[0], n);
   if (status!=ippStsNoErr) {
     printf("ippsConvert_16s32f failed!\n");
     exit(1);
@@ -58,22 +58,31 @@ void unpack16bit(Ipp16s *in, Ipp32f *out, int n) {
   return;
 }
 
-void unpack2bit(Ipp8u *in, Ipp32f *out, int n) {
+void unpack2bit(Ipp8u *in, Ipp32f **out, int nchan, int n) {
   int i;
-  for (i=0; i<n/4; i++) {
-    out[i*4] = lookup[in[i]&0x3];
-    out[i*4+1] = lookup[(in[i]>>2)&0x3];
-    out[i*4+2] = lookup[(in[i]>>4)&0x3];
-    out[i*4+3] = lookup[(in[i]>>6)&0x3];
+  if (nchan==1) {
+    for (i=0; i<n/4; i++) {
+      out[0][i*4]   = lookup[in[i]&0x3];
+      out[0][i*4+1] = lookup[(in[i]>>2)&0x3];
+      out[0][i*4+2] = lookup[(in[i]>>4)&0x3];
+      out[0][i*4+3] = lookup[(in[i]>>6)&0x3];
+    }
+  } else if (nchan==2) {
+    for (i=0; i<n/2; i++) {
+      out[0][i*2]   = lookup[in[i]&0x3];
+      out[1][i*2]   = lookup[(in[i]>>2)&0x3];
+      out[0][i*2+1] = lookup[(in[i]>>4)&0x3];
+      out[1][i*2+1] = lookup[(in[i]>>6)&0x3];
+    }
   }
   return;
 }
 
 
-void unpackFloat8(Ipp8u *in, Ipp32f *out, int n) {
+void unpackFloat8(Ipp8u *in, Ipp32f **out, int nchan,  int n) {
   int i;
   for (i=0; i<n; i++) {
-    out[i] = lookupFloat8[in[i]];
+    out[0][i] = lookupFloat8[in[i]];
   }
 }
 
@@ -98,8 +107,6 @@ int packBit2(Ipp32f **in, Ipp8u *out, int nchan, float mean, float stddev, int l
   int i, j, ch[4];
   float maxposThresh, maxnegThresh;
 
-  printf("packbits2\n");
-  
   if (len*nchan%4!=0) {
     printf("Can only pack multiple of 4 samples!\n");
     return(1);
@@ -127,28 +134,18 @@ int packBit2(Ipp32f **in, Ipp8u *out, int nchan, float mean, float stddev, int l
   } else if (nchan==2) {
     for (i=0;i<len;) {
       F2BIT(in[0][i],0);
-      F2BIT(in[1][i],0);
-      i++;
-      F2BIT(in[0][i],1);
       F2BIT(in[1][i],1);
       i++;
-      out[j] = (ch[0])|((ch[1]<<2) )|((ch[2]<<4) )|((ch[3]<<6) );
-      j++;
       F2BIT(in[0][i],2);
-      F2BIT(in[1][i],2);
-      i++;
-      F2BIT(in[0][i],3);
       F2BIT(in[1][i],3);
-      out[j] = (ch[0])|((ch[1]<<2) )|((ch[2]<<4) )|((ch[3]<<6) );
       i++;
+      out[j] = (ch[0])|((ch[1]<<2) )|((ch[2]<<4) )|((ch[3]<<6) );
       j++;
     }
   } else {
     fprintf(stderr, "Error: Do not support %d channels\n", nchan);
     exit(1);
   }
-
-  printf("...done");
   return 0;
 }
 

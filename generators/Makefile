@@ -15,9 +15,9 @@ CC = gcc -Wall -g
 
 all: autoSpec generateSpectrum
 
-generateSpectrum: generateSpectrum.c
+generateSpectrum: generateSpectrum.c bitconversion.c  bitconversion.h
 	$(CC) $(IPPLIB) -o  $@ $< bitconversion.c -lm
 
-autoSpec: autoSpec.c bitconversion.c 
+autoSpec: autoSpec.c bitconversion.c  bitconversion.h
 	$(CC) $(IPPLIB) $(PGPLOTINCS) $(PGPLOTLIBS) -o  $@ $< bitconversion.c -lm
 

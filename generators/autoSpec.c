@@ -44,10 +44,11 @@
 void setSpecname (char *filename, char *outfile);
 
 void makespectrum(Ipp64f *spectrum, Ipp32fc *out, int n);
-void doplot(int npoint, float *xvals, float *plotspec, char *outfile, int noplot);
+void doplot(int npoint, float *xvals, Ipp64f **spectrum, int nchan, char *outfile, int noplot);
 
 Ipp32f *temp32f;
 Ipp64f *temp64f;
+Ipp32f *plotspec;
 
 #define BUFSIZE 16
 
@@ -71,14 +72,14 @@ double tim(void) {
   }                                 \
 
 int main (int argc, char * const argv[]) {
-  int i, file, s, nread, opt, tmp, thisread, dobreak;
+  int i, j, file, s, nread, opt, tmp, thisread, dobreak;
   int nfft, bytesperfft;
   char msg[MAXSTR+1], *filename, *outfile;
   Ipp8u  *buf;
   off_t off, offset;
   Ipp32fc *out;
-  Ipp64f *spectrum, sumStdDev, sumMean;
-  Ipp32f *plotspec, *in=NULL, *xvals, mean, stdDev;
+  Ipp64f **spectrum, sumStdDev, sumMean;
+  Ipp32f **in=NULL, *xvals, mean, stdDev;
   double t0, t1, tt, tA, tB;
   IppStatus status;
 
@@ -86,6 +87,7 @@ int main (int argc, char * const argv[]) {
   IppsDFTSpec_C_32fc *specC;
 
   int bits=0;                   /* Number of bits/sample */
+  int channels=1;               /* Number of IF channels */
   int bandwidth=0;              /* Observing bandwidth */
   int iscomplex = 0;            /* Is sampling complex */
   int isfloat = 0;              /* Is data IEEE floating point */
@@ -100,6 +102,8 @@ int main (int argc, char * const argv[]) {
     {"npoint", 1, 0, 'n'},
     {"nbits", 1, 0, 'b'},
     {"bits", 1, 0, 'b'},
+    {"channels", 1, 0, 'C'},
+    {"nchan", 1, 0, 'C'},
     {"skip", 1, 0, 's'},
     {"bandwidth", 1, 0, 'w'},
     {"bufsize", 1, 0, 'm'},
@@ -152,6 +156,7 @@ int main (int argc, char * const argv[]) {
       CASEINT('s', skip);
       CASEINT('n', npoint);
       CASEINT('m', bufsize);
+      CASEINT('C', channels);
   
     case 'd':
       if (strlen(optarg)>MAXSTR) {
@@ -198,6 +203,8 @@ int main (int argc, char * const argv[]) {
       break;
     }
   }
+
+  int nchan=channels;
 
   if (isfloat && bits==0) bits = 32;
 
@@ -252,17 +259,23 @@ int main (int argc, char * const argv[]) {
   if (bufsize==0) {
     bufsize = bytesperfft;
   }
+  bufsize *= nchan;
   printf("Using bufsize of %d bytes\n", bufsize);
 
   IPPMALLOC(buf, 8u, bufsize);
-  if (!isfloat || bits!=32) { IPPMALLOC(in, 32f, npoint*2);}
-  IPPMALLOC(out, 32fc, npoint+1); 
-  IPPMALLOC(spectrum, 64f, npoint);
-  IPPMALLOC(plotspec, 32f, npoint);
-  status = ippsZero_64f(spectrum, npoint);
-  if (status!=ippStsNoErr) {
-    printf("ippsZero_64f failed (%d: %s)!\n", status, ippGetStatusString(status));
-    exit(1);
+  in = malloc(nchan*sizeof(Ipp32f*));
+  if (!isfloat || bits!=32) {
+    for (i=0;i<nchan;i++) IPPMALLOC(in[i], 32f, npoint*2);
+  }
+  IPPMALLOC(out, 32fc, npoint+1);
+  spectrum = malloc(nchan*sizeof(Ipp64f*));
+  for (i=0;i<nchan;i++) {
+    IPPMALLOC(spectrum[i], 64f, npoint);
+    status = ippsZero_64f(spectrum[i], npoint);
+    if (status!=ippStsNoErr) {
+      printf("ippsZero_64f failed (%d: %s)!\n", status, ippGetStatusString(status));
+      exit(1);
+    }
   }
 
   int sizeDFTSpec, sizeDFTInitBuf, wbufsize;
@@ -361,15 +374,15 @@ int main (int argc, char * const argv[]) {
       nread += thisread;
       totalread += thisread;
     }
+
     if (dobreak) break;
     
-    if (nread < bytesperfft) break;
-    if (nread%bytesperfft != 0) { /* Need to read multiple of lags */
+    if (nread < bytesperfft*nchan) break;
+    if (nread%(bytesperfft*nchan) != 0) { /* Need to read multiple of lags */
 	  /* Data may be packed with multiple samples/byte or mutiple 
 	     bytes/sample */
       int shift;
-      shift = nread % bytesperfft;
-      printf("DEBUG: Need to shift %d bytes\n", shift);
+      shift = nread % (bytesperfft*nchan);
 	  
       off = lseek(file, -shift, SEEK_CUR); 
       if (off==-1) {
@@ -378,51 +391,53 @@ int main (int argc, char * const argv[]) {
       }
       nread -= shift;
     }
-
+    
     t0 = tim();
 
     /* Copy data into "in" array, fft then accumulate */
     /* No need to convert if already in float format */
-    for (i=0; i<nread/bytesperfft; i++) {
+    for (i=0; i<nread/(bytesperfft*nchan); i++) {
       if (!isfloat) {
 	if (bits==2) {
-	  unpack2bit(&buf[bytesperfft*i], in, npoint*2);
+	  unpack2bit(&buf[bytesperfft*i], in, nchan, npoint*2);
 	} else if (bits==8) {
-	  unpack8bit((Ipp8s*)&buf[bytesperfft*i], in, npoint*2);
+	  unpack8bit((Ipp8s*)&buf[bytesperfft*i], in, nchan, npoint*2);
 	} else if (bits==16) {
-	  unpack16bit((Ipp16s*)&buf[bytesperfft*i], in, npoint*2);
+	  unpack16bit((Ipp16s*)&buf[bytesperfft*i], in, nchan, npoint*2);
 	} else {
 	  fprintf(stderr, "Error: Do not support %d bits\n", bits);
 	}
       } else {
 	if (bits==32) {
-	  in = (Ipp32f*)(&buf[bytesperfft*i]);
+	  in[0] = (Ipp32f*)(&buf[bytesperfft*i]);
 	} else if (bits==8) {
-	  unpackFloat8((Ipp8u*)&buf[bytesperfft*i], in, npoint*2);
+	  unpackFloat8((Ipp8u*)&buf[bytesperfft*i], in, nchan, npoint*2);
 	} else {
 	  fprintf(stderr, "Error: Do not support floating point %d bits\n", bits);
 	}
       }
+      // Loop over channel
+      for (j=0; j<nchan; j++) {
+	status = ippsMeanStdDev_32f(in[j], npoint*2, &mean, &stdDev, ippAlgHintFast);
+	sumStdDev += stdDev;
+	sumMean += mean;
 
-      status = ippsMeanStdDev_32f(in, npoint*2, &mean, &stdDev, ippAlgHintFast);
-      sumStdDev += stdDev;
-      sumMean += mean;
-
-      if (iscomplex) {
-	status = ippsDFTFwd_CToC_32fc((Ipp32fc*)in, out, specC, workbuf);
-	if (status!=ippStsNoErr) {
-	  printf("ippsDFTFwd_CToC_32fc failed (%d: %s)!\n", status, ippGetStatusString(status));
-	  exit(1);
+	if (iscomplex) {
+	  status = ippsDFTFwd_CToC_32fc((Ipp32fc*)in[j], out, specC, workbuf);
+	  if (status!=ippStsNoErr) {
+	    printf("ippsDFTFwd_CToC_32fc failed (%d: %s)!\n", status, ippGetStatusString(status));
+	    exit(1);
+	  }
+	} else {
+	  status = ippsDFTFwd_RToCCS_32f(in[j], (Ipp32f*)out, spec, workbuf);
+	  if (status!=ippStsNoErr) {
+	    printf("ippsDFTFwd_RToCCS_32f failed (%d: %s)!\n", status, ippGetStatusString(status));
+	    exit(1);
+	  }
 	}
-      } else {
-	status = ippsDFTFwd_RToCCS_32f(in, (Ipp32f*)out, spec, workbuf);
-	if (status!=ippStsNoErr) {
-	  printf("ippsDFTFwd_RToCCS_32f failed (%d: %s)!\n", status, ippGetStatusString(status));
-	  exit(1);
-	}
-      }
       
-      makespectrum(spectrum,out,npoint);
+	makespectrum(spectrum[j],out,npoint);
+      }
       nfft++;
     }
     t1 = tim();
@@ -432,6 +447,11 @@ int main (int argc, char * const argv[]) {
   
   tB = tim();
 
+  // Normalise
+  for (i=0; i<nchan; i++) {
+    status = ippsMulC_64f_I(1.0/(nfft*npoint*2*M_PI), spectrum[i], npoint);
+  }
+
   for (i=0; i<npoint; i++) {
     if (bandwidth!=0) {
       xvals[i] = (float)i/(float)npoint*(float)bandwidth;
@@ -440,24 +460,18 @@ int main (int argc, char * const argv[]) {
     }
   }
 
-  status = ippsConvert_64f32f(spectrum, plotspec, npoint);
-  if (status!=ippStsNoErr) {
-    printf("ippsConvert_64f32f failed (%d: %s)!\n", status, ippGetStatusString(status));
-    exit(1);
-  }
 
-  status = ippsMulC_32f_I(1.0/(nfft*npoint*2*M_PI), plotspec, npoint);
   
   if (specfile==NULL) setSpecname(filename, outfile);
 
 
   if (!noplot) {
-    if (cpgbeg(0,pgdev,1,1)!=1) {
+    if (cpgbeg(0,pgdev,1,nchan)!=1) {
       fprintf(stderr, "Error calling PGBEGIN");
       return(1);
     }
   }
-  doplot(npoint, xvals, plotspec, outfile, noplot);
+  doplot(npoint, xvals, spectrum, nchan, outfile, noplot);
 
   printf("Integration took %.1f sec\n", tB-tA);
   printf("Total computational time= %0.1f seconds for %d ffts\n",  tt, nfft);
@@ -472,34 +486,43 @@ int main (int argc, char * const argv[]) {
   return(1);
 }
 
-void doplot(int npoint, float *xvals, float *plotspec, char *outfile, int noplot) {
-  int i;
+void doplot(int npoint, float *xvals, Ipp64f **spectrum, int nchan, char *outfile, int noplot) {
+  int i, j;
   float max, min, delta;
   FILE *os = 0;
+  IppStatus status;
 
-  max = plotspec[0];
+  max = spectrum[0][0];
   min = max;
 
   if (!noplot) {
-    for (i=1; i<npoint; i++) {
-      if (plotspec[i]>max) 
-	max = plotspec[i];
-      else if (plotspec[i]<min) 
-	min = plotspec[i];
+    for (i=0; i<nchan; i++) {
+      for (j=0; j<npoint; j++) {
+      if (spectrum[i][j]>max) 
+	max = spectrum[i][j];
+      else if (spectrum[i][j]<min) 
+	min = spectrum[i][j];
+      }
     }
-
     delta = (max-min)*0.05;
     min -= delta/2;
     max += delta;
 
-    cpgsci(7);
-    cpgbbuf();
-    cpgenv(xvals[0], xvals[npoint-1], min, max, 0, 0);
-    cpglab("Freq", "Amp", "");
-    cpgsci(2);
-    cpgline(npoint, xvals, plotspec);
+    for (i=0; i<nchan; i++) {
+      cpgsci(7);
+      cpgbbuf();
+      cpgenv(xvals[0], xvals[npoint-1], min, max, 0, 0);
+      cpglab("Freq", "Amp", "");
+      cpgsci(2);
 
-    cpgebuf();
+      status = ippsConvert_64f32f(spectrum[i], plotspec, npoint);
+      if (status!=ippStsNoErr) {
+	printf("ippsConvert_64f32f failed (%d: %s)!\n", status, ippGetStatusString(status));
+      exit(1);
+      }
+      cpgline(npoint, xvals, plotspec);
+      cpgebuf();
+    }
   }
 
   if (outfile!=NULL) {
@@ -510,7 +533,9 @@ void doplot(int npoint, float *xvals, float *plotspec, char *outfile, int noplot
     }
 
     for (i=0;i<npoint;i++) {
-      fprintf(os,"%.8f  %f\n", xvals[i], plotspec[i]);
+      fprintf(os, "%.8f ", xvals[i]);
+      for (j=0;j<nchan;j++) fprintf(os, " %f", plotspec[i]);
+      fprintf(os, "\n");
     }
     fclose(os);
   }
