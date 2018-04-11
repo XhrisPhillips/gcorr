@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
   // Run the processing
   fxkernel.process();
 
-  // Do somethung with subint
+  fxkernel.saveVisibilities("vis.out");
 
   // Calculate the elapsed time
 

@@ -3,8 +3,9 @@
 #include "math.h"
 #include <stdio.h>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
-
+#include <iomanip>
 
 // FxKernel will operate on a single subband (dual pol), upper sideband, for the duration of one subintegration
 // Suggest we fix to use 2 bit real data, in 2's complement?  i.e., assume that the data itself has headers stripped etc
@@ -338,6 +339,60 @@ void FxKernel::process()
       }
     }
   }
+
+  // Normalise
+  cf32 norm;
+  norm.re = numffts;
+  norm.im = 0;
+  for (int i=0; i<nbaselines; i++) {
+    for (int j=0; j<4; j++) {
+      vectorDivC_cf32_I(norm, visibilities[i][j], numchannels);
+    }
+  }
+}
+
+void FxKernel::saveVisibilities(const char * outfile) {
+  f32 ***amp, ***phase;
+
+  std::ofstream fvis(outfile);
+  
+  amp =  new f32**[nbaselines];
+  phase =  new f32**[nbaselines];
+  for (int i=0;i<nbaselines;i++)  {
+    amp[i] = new f32*[4]; // 2 pols and crosspol
+    phase[i] = new f32*[4]; // 2 pols and crosspol
+    for (int j=0; j<4; j++) {
+      amp[i][j] = vectorAlloc_f32(numchannels);
+      phase[i][j] = vectorAlloc_f32(numchannels);
+      vectorMagnitude_cf32(visibilities[i][j], amp[i][j], numchannels);
+      vectorPhase_cf32(visibilities[i][j], phase[i][j], numchannels);
+    }
+  }
+
+  
+  for (int c=0; c<numchannels; c++) {
+    fvis << std::setw(5) << c << " " << std::setw(11) << std::fixed << std::setprecision(6) << (c+0.5)/numchannels*bandwidth/1e6;
+    fvis  << std::setprecision(5);
+    for (int i=0; i<1; i++) {
+      for (int j=0; j<4; j++) {
+	fvis << " " << std::setw(11) << visibilities[i][j][c].re << " " << std::setw(11) << visibilities[i][j][c].im;
+	fvis << " " << std::setw(11) << amp[i][j][c] << " " << std::setw(10) << phase[i][j][c];
+      }
+    }
+    fvis << std::endl;
+  }
+  fvis.close();
+  
+  for (int i=0;i<nbaselines;i++) {
+    for (int j=0;j<4;j++) {
+      vectorFree(amp[i][j]);
+      vectorFree(phase[i][j]);
+    }
+    delete [] amp[i];
+    delete [] phase[i];
+  }
+  delete [] amp;
+  delete [] phase;
 }
 
 void FxKernel::accumulate(cf32 *** odata)
