@@ -45,6 +45,8 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
     cfact = 1;
   }
 
+  std::cout << "Subint time is " << sampletime*fftchannels*numffts*1000.0 << " msec" << std::endl;
+
   // Check for consistency and initialise lookup tables, if required.
   if (nbits==2) {
     if (fftchannels % 2) {
@@ -286,9 +288,7 @@ void FxKernel::process()
       double delayinsamples = meandelay / sampletime;
       sampledelay = int(delayinsamples + 0.5);
       
-      std::cout << "Sample delay = " << delayinsamples << std::endl;
-      
-      fractionaldelay = delayinsamples - sampledelay;
+      fractionaldelay = (delayinsamples - sampledelay)*sampletime;  // seconds
       offset = i*fftchannels - sampledelay;
       if(offset < 0) 
       {
@@ -368,11 +368,26 @@ void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, do
   meandelay = a*0.5 + b;
 }
 
+// 2 bit, 2 channel unpacker 
 void unpackReal2bit(u8 * inputdata, cf32 ** unpacked, int offset, int nsamp) {
+  // inputdata     array of tightly packed 2bit samples, 4 samples (2 times, 2 channels) per byte. Channels are interleaved
+  // unpacked      data as 2 complex float arrays
+  // offset        offset into array in SAMPLES
+  // nsamp         number of samples to unpack
   cf32 *fp;
 
-  u8 *byte = &inputdata[offset];
-  for (int o=0; o<nsamp; o++) { // 2 time samples/byte
+  int o = 0;
+  u8 *byte = &inputdata[offset/2];
+  if (offset%2) { 
+    fp = lut2bit[*byte]; 
+    unpacked[0][o] = fp[2];
+    unpacked[1][o] = fp[3];
+    o++;
+    byte++;
+    nsamp--;
+  }
+  
+  for (; o<nsamp-1; o++) { // 2 time samples/byte
     fp = lut2bit[*byte];  // pointer to vector of 4 complex floats
     byte++;               // move pointer to next byte for next iteration of loop
     unpacked[0][o] = fp[0];
@@ -380,6 +395,12 @@ void unpackReal2bit(u8 * inputdata, cf32 ** unpacked, int offset, int nsamp) {
     o++;
     unpacked[0][o] = fp[2];
     unpacked[1][o] = fp[3];
+  }
+
+  if (nsamp%2) {
+    fp = lut2bit[*byte]; 
+    unpacked[0][o] = fp[0];
+    unpacked[1][o] = fp[1];
   }
 }
 
