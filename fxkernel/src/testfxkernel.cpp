@@ -58,8 +58,6 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       std::exit(1);
     }
     if (anttoread) {
-      cout << "Ant " << iant << endl;
-      cout << "    " << line << endl;
       string thisfile;
       iss >> thisfile;
       antenna.push_back(keyword);
@@ -93,12 +91,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
   }
 }
 
-<<<<<<< HEAD
-int readdata(int bytestoread, vector<std::fstream*> &antStream, u8 **inputdata) {
-=======
-
 int readdata(int bytestoread, vector<std::ifstream*> &antStream, u8 **inputdata) {
->>>>>>> a9009c346443a34b6dece1b51c9475dac41c47ce
   for (int i=0; i<antStream.size(); i++) {
     antStream[i]->read((char*)inputdata[i], bytestoread);
     if (! *(antStream[i])) {
@@ -140,7 +133,8 @@ int main(int argc, char *argv[])
   cout << "Got NBIT " << nbit << endl;
   cout << "Got NCHAN " << numchannels << endl;
   cout << "Got LO " << lo << endl;
-  cout << "Got BANDWIDTH" << bandwidth << endl;
+  cout << "Got BANDWIDTH " << bandwidth << endl;
+  cout << "Got NUMFFTS " << numffts << endl;
   cout << "Got NANT " << numantennas << endl;
   for (int i=0;i<numantennas;i++) {
     cout << "  " << antennas[i] << ":" << antFiles[i] << endl;
@@ -151,12 +145,7 @@ int main(int argc, char *argv[])
 
   //openFiles(antennas, antFiles, antStream);
   for (int i=0; i<numantennas; i++) {
-<<<<<<< HEAD
-    antStream.push_back(new std::fstream(antFiles[i], std::ios::in | std::ios::binary));
-=======
-    std::ifstream thisfile(antFiles[i].c_str(), std::ios::binary);
-    antStream.push_back(&thisfile);
->>>>>>> a9009c346443a34b6dece1b51c9475dac41c47ce
+    antStream.push_back(new std::ifstream(antFiles[i], std::ios::binary));
   }
 
   // load up the test input data from somewhere
