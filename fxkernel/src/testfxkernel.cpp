@@ -44,7 +44,7 @@ void allocData(u8 ***data, int numantenna, int numchannels, int numffts, int nbi
 }
 
 void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant, double &lo, double &bandwidth,
-		 int &numffts, vector<string>& antenna, vector<string>& antFiles, double ***delays) {
+		 int &numffts, vector<string>& antenna, vector<string>& antFiles, double ***delays, double ** antfileoffsets) {
 
   std::ifstream fconfig(config);
 
@@ -67,6 +67,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       for (int i=0;i<3;i++) {
 	iss >> (*delays)[iant][i];  // Error checking needed
       }
+      iss >> (*antfileoffsets)[iant]; // Error checking needed
       iant++;
       anttoread--;
     } else if (strcasecmp(keyword.c_str(), "COMPLEX")==0) {
@@ -84,6 +85,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
     } else if (strcasecmp(keyword.c_str(), "NANT")==0) {
       iss >> nant; // Should error check
       *delays = new double*[nant]; // Alloc memory for delay buffer
+      *antfileoffsets = new double[nant]; // Alloc memory for antenna file offsets
       anttoread = nant;
       iant = 0;
     } else {
@@ -114,7 +116,8 @@ int main(int argc, char *argv[])
   char *configfile;
   int i, subintbytes, status;
   u8 ** inputdata;
-  double ** delays;
+  double ** delays; // delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration
+  double * antfileoffsets; // offset from each the nominal start time of the integration for each antenna data file.  In units of seconds.
   int numchannels, numantennas, numffts, nbit;
   double lo, bandwidth;
   bool iscomplex;
@@ -129,7 +132,7 @@ int main(int argc, char *argv[])
   configfile = argv[1];
 
   // load up the test input data and delays from the configfile
-  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
+  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays, &antfileoffsets);
 
   cout << "Got COMPLEX " << iscomplex << endl;
   cout << "Got NBIT " << nbit << endl;
@@ -161,7 +164,7 @@ int main(int argc, char *argv[])
   if (status) exit(1);
 
   // Set the delays
-  fxkernel.setDelays(delays);
+  fxkernel.setDelays(delays, antfileoffsets);
 
   // Checkpoint for timing
   
