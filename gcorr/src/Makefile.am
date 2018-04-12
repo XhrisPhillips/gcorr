@@ -6,4 +6,4 @@
 # Header files are not compiled, but should be listed as dependencies so that
 # they get distributed.
 bin_PROGRAMS = testgpukernel
-testfxkernel_SOURCES = testgpukernel.cpp gpukernel.cu
+testfxkernel_SOURCES = testgpukernel.cu gxkernel.cu
