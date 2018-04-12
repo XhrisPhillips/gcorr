@@ -484,10 +484,11 @@ void FxKernel::fringerotate(cf32 ** unpacked, f64 a, f64 b)
   int status;
 
   // subtract off any integer delay present
-  integerdelay = static_cast<int>(b);
+  integerdelay = static_cast<int>(b/sampletime) * sampletime;
+  //  integerdelay = static_cast<int>(b);
   b -= integerdelay;
 
-  // Fill in the delay values, using a and b and the precomputeed offsets
+  // Fill in the delay values, using a and b and the precomputed offsets
   status = vectorMulC_f64(subxoff, a, subxval, substridesize);
   if(status != vecNoErr)
     fprintf(stderr, "Error in linearinterpolate, subval multiplication\n");
