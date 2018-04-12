@@ -8,7 +8,7 @@ public:
   FxKernel(int nant, int nchan, int nfft, int numbits, double localosc, double bw);
   ~FxKernel();
   void setInputData(u8 ** idata);
-  void setDelays(double ** d);
+  void setDelays(double ** d, double * f);
   void process();
   void accumulate(cf32 *** odata);
   void saveVisibilities(const char * outfile);
@@ -49,8 +49,11 @@ private:
   // output data array
   cf32 *** visibilities;
 
-  // delay polynomial for each antenna.  Referenced to the first sample of the block of data.
+  // delay polynomial for each antenna. Put in the time in unit of FFT lengths since start of subintegration, get back delay in seconds.
   double ** delays;
+
+  // Offset for each antenna file from the nominal start time of the subintegration. In seconds.
+  double * filestartoffsets;
 
   // internal arrays
   f64 * subtoff;

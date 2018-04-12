@@ -250,9 +250,10 @@ void FxKernel::setInputData(u8 ** idata)
   inputdata = idata;
 }
 
-void FxKernel::setDelays(double ** d)
+void FxKernel::setDelays(double ** d, double * f)
 {
   delays = d;
+  filestartoffsets = f;
 }
 
 void FxKernel::process()
@@ -260,9 +261,9 @@ void FxKernel::process()
   // delay variables
   double meandelay; //mean delay in the middle of the FFT for a given antenna, in seconds
   double fractionaldelay; // fractional component of delay to be correction after channelisation
-  double delaya, delayb; // coefficients a and b for the interpolation across a given FFT
-  double delayinsamples; // mean delay converted into units of sample time
-  int sampledelay; //integer number of samples delay
+  double delaya, delayb; // coefficients a and b for the delay interpolation across a given FFT
+  double netdelaysamples_f; // net samples delays (floating point): mean delay minus file start offset converted into units of sample time
+  int netdelaysamples; // integer number of net samples delay
   int offset; //offset into the packed data vector
 
   // Zero visibilities
@@ -280,17 +281,9 @@ void FxKernel::process()
   // for(number of FFTs)... (parallelised via pthreads?)
   for(int i=0;i<numffts;i++)
   {
-
     // do station-based processing for each antenna in turn
     for(int j=0;j<numantennas;j++)
     {
-      // FIXME: as written, having taken out the bulk delay provided here (referencing the delay
-      // to the start of the data) would mean that the fringe rotation wouldn't be right (it 
-      // wouldn't line up across subintegrations) but that isn't relevant from a benchmarking 
-      // point of view.  However, at some point it would probably be better to provide a full, correct
-      // delay to each station, and to also provide the value by which each station datastream had
-      // already been offset (and hence do this properly).
-      //
       // FIXME: In DiFX we maximise cache efficiency by doing multiple FFTs, then doing multiple cross-multiplcations.
       // We don't have that here, and it can make a difference of 10s of percent, so we should take that
       // into account when making any comparisons to the GPU.  We can always quantify the effect in DiFX
@@ -299,11 +292,21 @@ void FxKernel::process()
 
       // unpack
       getStationDelay(j, i, meandelay, delaya, delayb);
-      delayinsamples = meandelay / sampletime;
-      sampledelay = int(delayinsamples + 0.5);
+      netdelaysamples_f = (meandelay - filestartoffsets[j]) / sampletime;
+      netdelaysamples   = int(netdelaysamples_f + 0.5);
 
-      fractionaldelay = (delayinsamples - sampledelay)*sampletime;  // seconds
-      offset = i*fftchannels - sampledelay;
+      fractionaldelay = (netdelaysamples_f - netdelaysamples)*sampletime;  // seconds
+      offset = i*fftchannels - netdelaysamples;
+      if(offset == -1) // can happen due to changing geometric delay over the subint
+      {
+        ++offset;
+        fractionaldelay += sampletime;
+      }
+      if(offset == maxoffset+1) // can happen due to changing geometric delay over the subint
+      {
+        --offset;
+        fractionaldelay -= sampletime;
+      }
       if(offset < 0 || offset>maxoffset) 
       {
 	antValid[j] = false;
@@ -432,7 +435,6 @@ void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, do
   a = d2-d0;
   b = d0 + (d1 - (a*0.5 + d0))/3.0;
   meandelay = a*0.5 + b;
-  std::cout << meandelay << std::endl;
 }
 
 // 2 bit, 2 channel unpacker 
