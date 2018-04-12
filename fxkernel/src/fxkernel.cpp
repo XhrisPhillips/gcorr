@@ -384,7 +384,7 @@ void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, do
   int integerdelay;
 
   // calculate values at the beginning, middle, and end of this FFT
-  d0 = interpolator[0]*delta*delta + interpolator[1]*delta + interpolator[2];
+  d0 = interpolator[0]*fftindex*fftindex*delta*delta + interpolator[1]*fftindex*delta + interpolator[2];
   d1 = interpolator[0]*(fftindex+0.5)*(fftindex+0.5)*delta*delta + interpolator[1]*(fftindex+0.5)*delta + interpolator[2];
   d2 = interpolator[0]*(fftindex+1.0)*(fftindex+1.0)*delta*delta + interpolator[1]*(fftindex+1.0)*delta + interpolator[2];
 
