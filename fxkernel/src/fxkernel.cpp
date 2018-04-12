@@ -179,6 +179,10 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double
     subchannelfreqs[i] = (float)((TWO_PI*i*bandwidth)/(double)numchannels);
     stepchannelfreqs[i] = (float)((TWO_PI*i*stridesize*bandwidth)/(double)numchannels);
   }
+
+  // Antenna and baseline validity/weights
+  antValid = new bool[nant];
+  baselineCount = new int[nbaselines];
 }
 
 FxKernel::~FxKernel()
@@ -208,6 +212,9 @@ FxKernel::~FxKernel()
   }
   delete [] visibilities;
 
+  delete [] antValid;
+  delete [] baselineCount;
+  
   vectorFree(subtoff);
   vectorFree(subtval);
   vectorFree(subxoff);
@@ -265,10 +272,14 @@ void FxKernel::process()
       vectorZero_cf32(visibilities[i][j], numchannels);
     }
   }
+
+  int maxoffset = (numffts-1)*fftchannels;
+  memset(baselineCount, 0, sizeof(int)*nbaselines); // Reset baselinecount
   
   // for(number of FFTs)... (parallelised via pthreads?)
   for(int i=0;i<numffts;i++)
   {
+
     // do station-based processing for each antenna in turn
     for(int j=0;j<numantennas;j++)
     {
@@ -292,19 +303,12 @@ void FxKernel::process()
 
       fractionaldelay = (delayinsamples - sampledelay)*sampletime;  // seconds
       offset = i*fftchannels - sampledelay;
-      if(offset < 0) 
+      if(offset < 0 || offset>maxoffset) 
       {
-        if(offset == -1) // can happen due to difference in geometric delay between start of first FFT and middle of first FFT
-        {
-          offset += 1;
-          fractionaldelay += 1;
-        }
-        else // must have made a mistake with the delay polynomial
-        {
-          std::cerr << "Offset is " << offset << " samples, this should never happen.  Aborting" << std::endl;
-          exit(1);
-        }
+	antValid[j] = false;
+	continue;
       }
+      antValid[j] = true;
       unpack(inputdata[j], unpacked[j], offset);
   
       // fringe rotate - after this function, each unpacked array has been fringe-rotated in-place
@@ -326,8 +330,11 @@ void FxKernel::process()
     int b = 0; // Baseline counter
     for(int j=0;j<numantennas-1;j++)
     {
+      if (!antValid[j]) continue;
       for(int k=j+1;k<numantennas;k++)
       {
+	if (!antValid[k]) continue;
+	
 	for(int l=0;l<2;l++)
 	{
 	  for(int m=0;m<2;m++)
@@ -336,6 +343,7 @@ void FxKernel::process()
 	    vectorAddProduct_cf32(channelised[j][l], conjchannels[k][m], visibilities[b][2*l + m], numchannels);
 	  }
 	}
+	baselineCount[b]++;
 	b++;
       }
     }
@@ -343,9 +351,10 @@ void FxKernel::process()
 
   // Normalise
   cf32 norm;
-  norm.re = numffts;
-  norm.im = 0;
   for (int i=0; i<nbaselines; i++) {
+    if (baselineCount[i]==0) continue; // Really should flag data
+    norm.re = baselineCount[i]; 
+    norm.im = 0;
     for (int j=0; j<4; j++) {
       vectorDivC_cf32_I(norm, visibilities[i][j], numchannels);
     }

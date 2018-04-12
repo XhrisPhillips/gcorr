@@ -42,6 +42,10 @@ private:
   cf32 *** channelised;
   cf32 *** conjchannels;
 
+  // Validity/weights
+  bool *antValid;
+  int *baselineCount;
+  
   // output data array
   cf32 *** visibilities;
 
