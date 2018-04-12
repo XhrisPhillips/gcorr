@@ -1,4 +1,3 @@
-// Some initial pseudocode and thoughts from Adam
 #include "fxkernel.h"
 #include "math.h"
 #include <stdio.h>
@@ -6,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <cstring>
 
 // FxKernel will operate on a single subband (dual pol), upper sideband, for the duration of one subintegration
 // Suggest we fix to use 2 bit real data, in 2's complement?  i.e., assume that the data itself has headers stripped etc
@@ -258,9 +258,10 @@ void FxKernel::setDelays(double ** d)
 void FxKernel::process()
 {
   // delay variables
-  double meandelay; //mean delay in the middle of the FFT for a given antenna
+  double meandelay; //mean delay in the middle of the FFT for a given antenna, in seconds
   double fractionaldelay; // fractional component of delay to be correction after channelisation
   double delaya, delayb; // coefficients a and b for the interpolation across a given FFT
+  double delayinsamples; // mean delay converted into units of sample time
   int sampledelay; //integer number of samples delay
   int offset; //offset into the packed data vector
 
@@ -298,7 +299,7 @@ void FxKernel::process()
 
       // unpack
       getStationDelay(j, i, meandelay, delaya, delayb);
-      double delayinsamples = meandelay / sampletime;
+      delayinsamples = meandelay / sampletime;
       sampledelay = int(delayinsamples + 0.5);
 
       fractionaldelay = (delayinsamples - sampledelay)*sampletime;  // seconds
@@ -431,6 +432,7 @@ void FxKernel::getStationDelay(int antenna, int fftindex, double & meandelay, do
   a = d2-d0;
   b = d0 + (d1 - (a*0.5 + d0))/3.0;
   meandelay = a*0.5 + b;
+  std::cout << meandelay << std::endl;
 }
 
 // 2 bit, 2 channel unpacker 
@@ -483,11 +485,11 @@ void FxKernel::fringerotate(cf32 ** unpacked, f64 a, f64 b)
   int integerdelay;
   int status;
 
-  // subtract off any integer delay present
+  // subtract off any integer delay (whole seconds) present (of course, this shouldn't be present).
   integerdelay = static_cast<int>(b);
   b -= integerdelay;
 
-  // Fill in the delay values, using a and b and the precomputeed offsets
+  // Fill in the delay values, using a and b and the precomputed offsets
   status = vectorMulC_f64(subxoff, a, subxval, substridesize);
   if(status != vecNoErr)
     fprintf(stderr, "Error in linearinterpolate, subval multiplication\n");
