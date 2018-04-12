@@ -300,12 +300,12 @@ void FxKernel::process()
       if(offset == -1) // can happen due to changing geometric delay over the subint
       {
         ++offset;
-        fractionaldelay -= sampletime;
+        fractionaldelay += sampletime;
       }
       if(offset == maxoffset+1) // can happen due to changing geometric delay over the subint
       {
         --offset;
-        fractionaldelay += sampletime;
+        fractionaldelay -= sampletime;
       }
       if(offset < 0 || offset>maxoffset) 
       {
