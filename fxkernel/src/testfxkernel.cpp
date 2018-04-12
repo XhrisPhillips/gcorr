@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>  // for high_resolution_clock
 
 using std::string;
 using std::cout;
@@ -62,7 +63,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       iss >> thisfile;
       antenna.push_back(keyword);
       antFiles.push_back(thisfile);
-      (*delays)[iant] = new double[3]; //assume we're going to read a second-order polynomial for each antenna
+      (*delays)[iant] = new double[3]; //assume we're going to read a second-order polynomial for each antenna, d = a*t^2 + b*t + c, t in units of FFT windows, d in seconds
       for (int i=0;i<3;i++) {
 	iss >> (*delays)[iant][i];  // Error checking needed
       }
@@ -111,7 +112,7 @@ int main(int argc, char *argv[])
 {
   // variables for the test
   char *configfile;
-  int i, subintbytes;
+  int i, subintbytes, status;
   u8 ** inputdata;
   double ** delays;
   int numchannels, numantennas, numffts, nbit;
@@ -127,6 +128,7 @@ int main(int argc, char *argv[])
 
   configfile = argv[1];
 
+  // load up the test input data and delays from the configfile
   parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
 
   cout << "Got COMPLEX " << iscomplex << endl;
@@ -148,19 +150,11 @@ int main(int argc, char *argv[])
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
   }
 
-  // load up the test input data from somewhere
-
-  // Load up the delays from somewhere - these should be a 2nd order polynomial per antenna
-  // with the x value being in units of FFTs.
-
-
   // create the FxKernel
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
   FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth);
 
   fxkernel.setInputData(inputdata);
-
-  int status;
 
   // One loop for now
   status = readdata(subintbytes, antStream, inputdata);
