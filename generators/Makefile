@@ -1,14 +1,9 @@
 
-IPPBASE =  /opt/intel
-IPPLIB = -I$(IPPBASE)/ipp/include -Wl,-rpath,$(IPPBASE)/ipp/lib -L$(IPPBASE)/ipp/lib -lipps -lippvm -lippcore
-
-DIFXROOT = /Users/phi196/code/difx
-DIFXINC = -I$(DIFXROOT)/include
-DIFXLIB = -L${DIFXROOT}/lib
+base =  /opt/intel
+IPPLIB = -I${base}/ipp/include -Wl,-rpath,${base}/lib/intel64 -Wl,-rpath,${base}/ipp/lib/intel64 -L${base}/lib/intel64 -L${base}/ipp/lib/intel64 -L${base}/compiler/lib/intel64 -lipps -lippvm -lippcore
 
 PGPLOTINCS = 
 PGPLOTLIBS = -lcpgplot -lpgplot
-
 
 #CC = gcc -Wall -O3 -mavx2
 CC = gcc -Wall -g
