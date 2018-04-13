@@ -1,4 +1,5 @@
 #include <cuComplex.h>
+#include "gxkernel.h"
 
 
 // Add complex number to another number 
@@ -17,8 +18,16 @@ __host__ __device__ static __inline__ cuComplex cuCmulConjf (cuComplex x, cuComp
     return prod;
 }
 
+
+// Divide a complex number by a constant
+__host__ __device__ static __inline__ void cuCdivCf(cuFloatComplex *a, float b)
+{
+  (*a).x /= b;
+  (*a).y /= b;
+}
+
 // Rotate inplace a complex number by theta (radians)
-__host__ __device__ static __inline__ void cuRotatePhase (cuComplex x, float theta)
+__host__ __device__ static __inline__ void cuRotatePhase (cuComplex *x, float theta)
 {
   float cs, sn;
   sincosf(theta, &sn, &cs);
@@ -31,6 +40,17 @@ __host__ __device__ static __inline__ void cuRotatePhase (cuComplex x, float the
   return;
 }
 
+void freeMem() {
+  cudaError_t status;
+  size_t free, total;
+  status = cudaMemGetInfo(&free, &total);
+  if (status != cudaSuccess) {
+    fprintf(stderr, "Error: cudaMemGetInfo failed with %d\n", status); 
+    exit(EXIT_FAILURE);							
+  }
+  printf("GPU memory available %.1f/%.1f MBbytes\n", free/1024.0/1024, total/1024.0/1024);
+}
+
 /* Fringe rotate a single antenna inplace, assuming dual pol data */
 
 __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
@@ -39,14 +59,43 @@ __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
   // rotVec is an array of 2 values - initial phase and phase step per sample 
 
   size_t ichan = threadIdx.x;
-  site_t ifft = 0;  // FFT block number  NEED TO CALCULATE
+  size_t ifft = 0;  // FFT block number  NEED TO CALCULATE
   int fftsize  = blockIdx.x;
 
   float theta = rotVec[ifft][0]*ichan*rotVec[ifft][1];
-  cuRotatePhase(ant[ifft*fftsize+ichan][0], theta);
-  cuRotatePhase(ant[ifft*fftsize+ichan][1], theta);
+  cuRotatePhase(&ant[ifft*fftsize+ichan][0], theta);
+  cuRotatePhase(&ant[ifft*fftsize+ichan][1], theta);
 }
 
+__constant__ float levels_2bit[4];
+
+void init_2bitLevels() {
+  static const float HiMag = 3.3359;  // Optimal value
+  const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
+
+  gpuErrchk(cudaMemcpyToSymbol(levels_2bit, lut4level, sizeof(levels_2bit)));
+}
+
+
+/* Unpack 2bit real data in complex float, assuming 2 interleave channels 
+   This is probably NOT suitable for the final system, just an initial place holder
+   Specifically I think delay compersation needs to be done her
+   Each thread unpacks 4 samples, 2 per channel (pol). Total number of threads should be
+  a factor of 2 smaller than numbwe of time samples (4 than total # samples).
+*/
+
+__global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src) {
+
+  const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
+  int j = i*2;
+
+  dest[0][j] = make_cuFloatComplex(levels_2bit[src[i]&0x3], 0);
+  dest[1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>2)&0x3], 0);
+  j++;
+  dest[0][j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
+  dest[1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
+
+}
 
 
 
@@ -55,7 +104,7 @@ __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
 
    ants is an array of array pointers for each telescope. There are nant*2 arrays (dual pol)
    Each antenna array has nchan frequency points, repeated XX times.
-   accum contains the cross correlatipn values - there is nant*(nant-1)*2*4 values repeated XX times
+   accum contains the cross correlation values - there is nant*(nant-1)*2*4 values repeated XX times
 
 */
 
@@ -109,3 +158,15 @@ __global__ void CrossCorrShared(cuComplex **ants, cuComplex **accum, int nant, i
   }
 }
 
+__global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) { 
+
+  //int nchan = blockDim.x * gridDim.x;
+
+  int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
+  int b = blockIdx.z*4+blockIdx.y;
+  
+  for (int i=1; i<nchunk; i++) {
+    cuCaddIf(&accum[0][ichan], accum[b][ichan]);
+  }
+  cuCdivCf(&accum[0][ichan], nchunk);
+}

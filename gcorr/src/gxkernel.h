@@ -1,6 +1,8 @@
 #ifndef _gxkernel
 #define _gxkernel
 
+#include <stdio.h>
+
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -22,5 +24,14 @@ inline void __cudaCheckError( const char *file, const int line ) {
     exit(err);
   }
 }
+
+void freeMem();
+
+void init_2bitLevels();
+__global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src);
+
+__global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nchunk);
+__global__ void CrossCorrShared(cuComplex **ants, cuComplex **accum, int nant, int nchunk);
+__global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk);
 
 #endif
