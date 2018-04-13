@@ -79,7 +79,7 @@ int main (int argc, char * const argv[]) {
   off_t off, offset;
   Ipp32fc *out;
   Ipp64f **spectrum, sumStdDev, sumMean;
-  Ipp32f **in=NULL, *xvals, mean, stdDev;
+  Ipp32f **in, *xvals, mean, stdDev;
   double t0, t1, tt, tA, tB;
   IppStatus status;
 
@@ -260,12 +260,11 @@ int main (int argc, char * const argv[]) {
     bufsize = bytesperfft;
   }
   bufsize *= nchan;
-  printf("Using bufsize of %d bytes\n", bufsize);
-
   IPPMALLOC(buf, 8u, bufsize);
-  in = malloc(nchan*sizeof(Ipp32f*));
+
+ in = malloc(nchan*sizeof(Ipp32f*));
   if (!isfloat || bits!=32) {
-    for (i=0;i<nchan;i++) IPPMALLOC(in[i], 32f, npoint*2);
+    for (i=0;i<nchan;i++) {IPPMALLOC(in[i], 32f, npoint*2)};
   }
   IPPMALLOC(out, 32fc, npoint+1);
   spectrum = malloc(nchan*sizeof(Ipp64f*));
@@ -478,9 +477,20 @@ int main (int argc, char * const argv[]) {
   printf("StdDev = %.6f, mean=%.6f\n", sumStdDev/nfft, mean/nfft);
 
   ippsFree(buf);
-  if (!isfloat || bits!=32) ippsFree(in);
+  if (!isfloat || bits!=32) {
+    for (int i=0; i<nchan;i++) {
+      ippsFree(in[i]);
+      ippsFree(spectrum[i]);
+    };
+    free(in);
+    free(spectrum);
+  }
   ippsFree(out);
-
+  ippsFree(xvals);
+  ippsFree(plotspec);
+  ippsFree(temp64f);
+  ippsFree(temp32f);
+  
   if (!noplot) cpgend();
 
   return(1);
