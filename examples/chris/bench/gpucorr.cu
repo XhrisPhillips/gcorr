@@ -395,7 +395,7 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaEventRecord(start_exec, 0));
   for (int i=0; i<repeat; i++) {  
     // Cross Correlate
-    CrossCorrShared3<<<blocks,threads,nant*2*sizeof(cuComplex)>>>(antData, baseline, nchunk);
+    CrossCorrShared3<<<blocks,threads,nant*2*sizeof(cuComplex)>>>(antData, baseline, nant, nchunk);
     CudaCheckError();
   }
   gpuErrchk(cudaEventRecord(stop_exec, 0));
