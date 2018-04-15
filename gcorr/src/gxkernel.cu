@@ -67,34 +67,35 @@ __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
   cuRotatePhase(&ant[ifft*fftsize+ichan][1], theta);
 }
 
-__constant__ float levels_2bit[4];
+//__constant__ float levels_2bit[4];
 
 void init_2bitLevels() {
   static const float HiMag = 3.3359;  // Optimal value
   const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
 
-  gpuErrchk(cudaMemcpyToSymbol(levels_2bit, lut4level, sizeof(levels_2bit)));
+  //gpuErrchk(cudaMemcpyToSymbol(levels_2bit, lut4level, sizeof(levels_2bit)));
 }
 
 
 /* Unpack 2bit real data in complex float, assuming 2 interleave channels 
    This is probably NOT suitable for the final system, just an initial place holder
-   Specifically I think delay compersation needs to be done her
+   Specifically I think delay compersation needs to be done here
    Each thread unpacks 4 samples, 2 per channel (pol). Total number of threads should be
   a factor of 2 smaller than numbwe of time samples (4 than total # samples).
 */
 
-__global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src) {
-
+__global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant) {
+  static const float HiMag = 3.3359;  // Optimal value
+  const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
+  const int a = iant*2;
   const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
   int j = i*2;
 
-  dest[0][j] = make_cuFloatComplex(levels_2bit[src[i]&0x3], 0);
-  dest[1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>2)&0x3], 0);
+  dest[a][j] = make_cuFloatComplex(levels_2bit[src[i]&0x3], 0);
+  dest[a+1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>2)&0x3], 0);
   j++;
-  dest[0][j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
-  dest[1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
-
+  dest[a][j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
+  dest[a+1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
 }
 
 
@@ -112,8 +113,8 @@ __global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src) {
 __global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nchunk) { 
 
   int nchan = blockDim.x * gridDim.x;
-  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk;
-  int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
+  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
+  int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * 2;
 
   //printf("%d/%d:%d/%d %d %d\n", threadIdx.x, blockIdx.x, blockIdx.y, nchunk, ichan, ochan);
   //printf("%d\n", ochan);
@@ -172,4 +173,13 @@ __global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) {
     cuCaddIf(&accum[b][ichan], accum[b][ichan + i*nchan]);
   }
   cuCdivCf(&accum[0][ichan], nchunk);
+}
+
+__global__ void printArray(cuComplex *a) {
+  int i = threadIdx.x;
+  printf("%f%+fi\n", a[i].x, a[i].y);
+}
+__global__ void printArrayInt(int8_t *a) {
+  int i = threadIdx.x;
+  printf("%d\n", a[i]);
 }

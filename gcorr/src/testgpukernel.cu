@@ -289,7 +289,7 @@ int main(int argc, char *argv[])
   // Unpack the data
   cout << "Unpack data" << endl;
   for (int i=0; i<numantennas; i++) {
-    unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[i*2], packedData[i]);
+    unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(unpackedData, packedData[i], i);
     CudaCheckError();
   }
 
@@ -313,11 +313,14 @@ int main(int argc, char *argv[])
   //CrossCorrShared<<<blocks,threads>>>(antData, baseline, nant, nchunk);
   CudaCheckError();
   
-  //finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
-  //CudaCheckError();
+  finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
+  CudaCheckError();
 
   
   saveVisibilities("vis.out", baselineData_h, nbaseline, numchannels, bandwidth);
+
+  cudaDeviceSynchronize();
+  cudaDeviceReset();
 
   // Calculate the elapsed time
 
