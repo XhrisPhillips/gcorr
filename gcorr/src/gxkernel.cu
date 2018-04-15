@@ -113,8 +113,11 @@ __global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nch
 
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk;
-  const size_t ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
+  int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
 
+  //printf("%d/%d:%d/%d %d %d\n", threadIdx.x, blockIdx.x, blockIdx.y, nchunk, ichan, ochan);
+  //printf("%d\n", ochan);
+  
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
     b=0;
@@ -160,13 +163,13 @@ __global__ void CrossCorrShared(cuComplex **ants, cuComplex **accum, int nant, i
 
 __global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) { 
 
-  //int nchan = blockDim.x * gridDim.x;
+  int nchan = blockDim.x * gridDim.x;
 
   int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
   int b = blockIdx.z*4+blockIdx.y;
   
   for (int i=1; i<nchunk; i++) {
-    cuCaddIf(&accum[0][ichan], accum[b][ichan]);
+    cuCaddIf(&accum[b][ichan], accum[b][ichan + i*nchan]);
   }
   cuCdivCf(&accum[0][ichan], nchunk);
 }
