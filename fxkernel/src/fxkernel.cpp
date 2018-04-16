@@ -365,7 +365,7 @@ void FxKernel::process()
   }
 }
 
-void FxKernel::saveVisibilities(const char * outfile) {
+void FxKernel::saveVisibilities(const char * outfile, int runtimeNS, std::string starttimestring) {
   f32 ***amp, ***phase;
 
   std::ofstream fvis(outfile);
@@ -385,7 +385,7 @@ void FxKernel::saveVisibilities(const char * outfile) {
 
   
   for (int c=0; c<numchannels; c++) {
-    fvis << std::setw(5) << c << " " << std::setw(11) << std::fixed << std::setprecision(6) << (c+0.5)/numchannels*bandwidth/1e6;
+    fvis << std::setw(5) << c << " " << std::setw(11) << std::fixed << std::setprecision(6) << (c+0.5)/numchannels*bandwidth/1e6 << " " << runtimeNS << " " << starttimestring;
     fvis  << std::setprecision(5);
     for (int i=0; i<1; i++) {
       for (int j=0; j<4; j++) {

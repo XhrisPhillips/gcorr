@@ -114,10 +114,10 @@ __global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nch
 
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
-  int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * 2;
+  int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
 
   //printf("%d/%d:%d/%d %d %d\n", threadIdx.x, blockIdx.x, blockIdx.y, nchunk, ichan, ochan);
-  //printf("%d\n", ochan);
+  //xprintf("%d\n", ochan);
   
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
