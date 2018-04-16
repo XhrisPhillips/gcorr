@@ -170,6 +170,7 @@ int main(int argc, char *argv[])
   auto starttime = std::chrono::high_resolution_clock::now();
   std::time_t time_now_t = std::chrono::system_clock::to_time_t(starttime);
   string starttimestring = std::ctime(&time_now_t);
+  starttimestring.pop_back();
   
   // Run the processing
   fxkernel.process();
