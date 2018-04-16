@@ -55,14 +55,14 @@ void freeMem() {
 
 __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
   // ant[0] pointer to pol A
-  // ant[a] pointer to pol B
+  // ant[1] pointer to pol B
   // rotVec is an array of 2 values - initial phase and phase step per sample 
 
   size_t ichan = threadIdx.x;
   size_t ifft = 0;  // FFT block number  NEED TO CALCULATE
   int fftsize  = blockIdx.x;
 
-  float theta = rotVec[ifft][0]*ichan*rotVec[ifft][1];
+  float theta = rotVec[ifft][0] + ichan*rotVec[ifft][1];
   cuRotatePhase(&ant[ifft*fftsize+ichan][0], theta);
   cuRotatePhase(&ant[ifft*fftsize+ichan][1], theta);
 }
@@ -161,7 +161,7 @@ __global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) {
   int nchan = blockDim.x * gridDim.x;
 
   int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
-  int b = blockIdx.y*4+blockIdx.z;
+  int b = blockIdx.y+blockIdx.z*4;
   
   for (int i=1; i<nchunk; i++) {
     cuCaddIf(&accum[b][ichan], accum[b][ichan + i*nchan]);
