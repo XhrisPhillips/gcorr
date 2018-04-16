@@ -8,7 +8,7 @@
 #include <cstring>
 #include <stdint.h>
 #include <complex>
-#include <argp>
+#include <argp.h>
 
 //#include <chrono>  // for high_resolution_clock
 
@@ -23,7 +23,7 @@ using std::vector;
 
 const char *argp_program_version = "testgpukernel 1.0";
 static char doc[] = "testgpukernel -- testing operation of the GPU correlator code";
-static char args_doc[] = "[options] configuration_file";
+static char args_doc[] = "configuration_file";
 
 #define BUFSIZE 256
 
@@ -42,7 +42,7 @@ struct arguments {
 
 /* The option parser */
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-  struct arguments *arguments = state->input;
+  struct arguments *arguments = (struct arguments *)state->input;
 
   switch (key) {
   case 'b':
@@ -54,11 +54,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   case ARGP_KEY_END:
     if (strlen(arguments->configfile) == 0) {
       argp_usage(state);
+      exit(0);
     }
     break;
   default:
     // Assume this is the config file.
-    strncpy(arguments->configfile, arg, BUFSIZE);
+    if (arg != NULL) {
+       if (strlen(arg) > 0) {
+       	  strncpy(arguments->configfile, arg, BUFSIZE);
+       }
+    }
   }
   return 0;
 }
@@ -258,8 +263,11 @@ int main(int argc, char *argv[])
 
   if (strlen(arguments.configfile) > 0) {
     configfile = arguments.configfile;
-  } else {
-    argp_error(
+  }
+  printf("reading configuration file %s\n", arguments.configfile);
+  printf("running %d loops\n", arguments.nloops);
+  printf("will output %s data\n", (arguments.output_binary == 0) ? "text" : "binary");
+
   //configfile = argv[1];
 
   void init_2bitLevels();
