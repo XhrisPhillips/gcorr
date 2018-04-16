@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>  // for high_resolution_clock
 
 using std::string;
 using std::cout;
@@ -43,7 +44,7 @@ void allocData(u8 ***data, int numantenna, int numchannels, int numffts, int nbi
 }
 
 void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant, double &lo, double &bandwidth,
-		 int &numffts, vector<string>& antenna, vector<string>& antFiles, double ***delays) {
+		 int &numffts, vector<string>& antenna, vector<string>& antFiles, double ***delays, double ** antfileoffsets) {
 
   std::ifstream fconfig(config);
 
@@ -62,10 +63,11 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
       iss >> thisfile;
       antenna.push_back(keyword);
       antFiles.push_back(thisfile);
-      (*delays)[iant] = new double[3]; //assume we're going to read a second-order polynomial for each antenna
+      (*delays)[iant] = new double[3]; //assume we're going to read a second-order polynomial for each antenna, d = a*t^2 + b*t + c, t in units of FFT windows, d in seconds
       for (int i=0;i<3;i++) {
 	iss >> (*delays)[iant][i];  // Error checking needed
       }
+      iss >> (*antfileoffsets)[iant]; // Error checking needed
       iant++;
       anttoread--;
     } else if (strcasecmp(keyword.c_str(), "COMPLEX")==0) {
@@ -83,6 +85,7 @@ void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant
     } else if (strcasecmp(keyword.c_str(), "NANT")==0) {
       iss >> nant; // Should error check
       *delays = new double*[nant]; // Alloc memory for delay buffer
+      *antfileoffsets = new double[nant]; // Alloc memory for antenna file offsets
       anttoread = nant;
       iant = 0;
     } else {
@@ -111,9 +114,10 @@ int main(int argc, char *argv[])
 {
   // variables for the test
   char *configfile;
-  int i, subintbytes;
+  int i, subintbytes, status;
   u8 ** inputdata;
-  double ** delays;
+  double ** delays; // delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration
+  double * antfileoffsets; // offset from each the nominal start time of the integration for each antenna data file.  In units of seconds.
   int numchannels, numantennas, numffts, nbit;
   double lo, bandwidth;
   bool iscomplex;
@@ -127,7 +131,8 @@ int main(int argc, char *argv[])
 
   configfile = argv[1];
 
-  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
+  // load up the test input data and delays from the configfile
+  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays, &antfileoffsets);
 
   cout << "Got COMPLEX " << iscomplex << endl;
   cout << "Got NBIT " << nbit << endl;
@@ -148,26 +153,18 @@ int main(int argc, char *argv[])
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
   }
 
-  // load up the test input data from somewhere
-
-  // Load up the delays from somewhere - these should be a 2nd order polynomial per antenna
-  // with the x value being in units of FFTs.
-
-
   // create the FxKernel
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
   FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth);
 
   fxkernel.setInputData(inputdata);
 
-  int status;
-
   // One loop for now
   status = readdata(subintbytes, antStream, inputdata);
   if (status) exit(1);
 
   // Set the delays
-  fxkernel.setDelays(delays);
+  fxkernel.setDelays(delays, antfileoffsets);
 
   // Checkpoint for timing
   
