@@ -8,6 +8,7 @@
 #include <cstring>
 #include <stdint.h>
 #include <complex>
+#include <argp>
 
 //#include <chrono>  // for high_resolution_clock
 
@@ -19,6 +20,52 @@ using std::cout;
 using std::cerr;
 using std::endl;
 using std::vector;
+
+const char *argp_program_version = "testgpukernel 1.0";
+static char doc[] = "testgpukernel -- testing operation of the GPU correlator code";
+static char args_doc[] = "[options] configuration_file";
+
+#define BUFSIZE 256
+
+/* Our command line options */
+static struct argp_option options[] = {
+  { "loops", 'n', "NLOOPS", 0, "run the code N times in a loop" },
+  { "binary", 'b', 0, 0, "output binary instead of default text" },
+  { 0 }
+};
+
+struct arguments {
+  int output_binary;
+  int nloops;
+  char configfile[BUFSIZE];
+};
+
+/* The option parser */
+static error_t parse_opt(int key, char *arg, struct argp_state *state) {
+  struct arguments *arguments = state->input;
+
+  switch (key) {
+  case 'b':
+    arguments->output_binary = 1;
+    break;
+  case 'n':
+    arguments->nloops = atoi(arg);
+    break;
+  case ARGP_KEY_END:
+    if (strlen(arguments->configfile) == 0) {
+      argp_usage(state);
+    }
+    break;
+  default:
+    // Assume this is the config file.
+    strncpy(arguments->configfile, arg, BUFSIZE);
+  }
+  return 0;
+}
+
+/* The argp parser */
+static struct argp argp = { options, parse_opt, args_doc, doc };
+
 
 #include "gxkernel.h"
 
@@ -198,12 +245,22 @@ int main(int argc, char *argv[])
   cuComplex **unpackedData, **unpackedData_h, **channelisedData, **channelisedData_h, **baselineData, **baselineData_h;
   cufftHandle plan;
   
-  if (argc!=2) {
-    cout << "Usage:  testfxkernel <config>\n" << endl;
-    exit(1);
-  }
+  //if (argc!=2) {
+  //  cout << "Usage:  testfxkernel <config>\n" << endl;
+  //  exit(1);
+  //}
+  // Read in the command line arguments.
+  struct arguments arguments;
+  arguments.nloops = 1;
+  arguments.output_binary = 0;
+  arguments.configfile[0] = 0;
+  argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
-  configfile = argv[1];
+  if (strlen(arguments.configfile) > 0) {
+    configfile = arguments.configfile;
+  } else {
+    argp_error(
+  //configfile = argv[1];
 
   void init_2bitLevels();
 
