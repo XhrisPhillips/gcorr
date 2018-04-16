@@ -2,7 +2,13 @@
 #include "gxkernel.h"
 
 
-// Add complex number to another number 
+/*! \brief Add two complex numbers together.
+ *
+ * Given two complex numbers a and b, this routine adds b to a, altering a in place.
+ * \param a a pointer to a cuFloatComplex number, this number will be altered by the addition
+ * \param b a cuFloatComplex number
+ * \return Nothing
+ */
 __host__ __device__ static __inline__ void cuCaddIf(cuFloatComplex *a, cuFloatComplex b)
 {
   (*a).x += b.x;
