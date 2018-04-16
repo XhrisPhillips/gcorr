@@ -250,10 +250,6 @@ int main(int argc, char *argv[])
   cuComplex **unpackedData, **unpackedData_h, **channelisedData, **channelisedData_h, **baselineData, **baselineData_h;
   cufftHandle plan;
   
-  //if (argc!=2) {
-  //  cout << "Usage:  testfxkernel <config>\n" << endl;
-  //  exit(1);
-  //}
   // Read in the command line arguments.
   struct arguments arguments;
   arguments.nloops = 1;
@@ -349,39 +345,41 @@ int main(int argc, char *argv[])
     gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
   }
 
-  // Set the delays //
-
-  // Unpack the data
-  cout << "Unpack data" << endl;
-  for (int i=0; i<numantennas; i++) {
-    unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(unpackedData, packedData[i], i);
-    CudaCheckError();
-  }
-
-  // Fringe Rotate //
+  for (int l=0; l<arguments.nloops; l++) {
   
-  // FFT
-  cout << "FFT data" << endl;
-  for (int i=0; i<numantennas*2; i++) {
-    if (cufftExecC2C(plan, unpackedData_h[i], channelisedData_h[i], CUFFT_FORWARD) != CUFFT_SUCCESS) {
-      cout << "CUFFT error: ExecC2C Forward failed" << endl;
-      return(0);
+    // Set the delays //
+
+    // Unpack the data
+    cout << "Unpack data" << endl;
+    for (int i=0; i<numantennas; i++) {
+      unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(unpackedData, packedData[i], i);
+      CudaCheckError();
     }
-  }
 
-  // Cross correlate
-  for (int i=0; i<nbaseline*4; i++) {
-    gpuErrchk(cudaMemset(baselineData_h[i], 0, numchannels*parallelAccum*sizeof(cuComplex)));
-  }
-  cout << "Cross correlate" << endl;
-  CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-  //CrossCorrShared<<<blocks,threads>>>(antData, baseline, nant, nchunk);
-  CudaCheckError();
+    // Fringe Rotate //
   
-  finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
-  CudaCheckError();
+    // FFT
+    cout << "FFT data" << endl;
+    for (int i=0; i<numantennas*2; i++) {
+      if (cufftExecC2C(plan, unpackedData_h[i], channelisedData_h[i], CUFFT_FORWARD) != CUFFT_SUCCESS) {
+	cout << "CUFFT error: ExecC2C Forward failed" << endl;
+	return(0);
+      }
+    }
 
-  
+    // Cross correlate
+    for (int i=0; i<nbaseline*4; i++) {
+      gpuErrchk(cudaMemset(baselineData_h[i], 0, numchannels*parallelAccum*sizeof(cuComplex)));
+    }
+    cout << "Cross correlate" << endl;
+    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    //CrossCorrShared<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    CudaCheckError();
+    
+    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
+    CudaCheckError();
+
+  }
   saveVisibilities("vis.out", baselineData_h, nbaseline, numchannels, bandwidth);
 
   cudaDeviceSynchronize();
