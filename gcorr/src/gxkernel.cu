@@ -111,14 +111,10 @@ __global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int 
 
 
 __global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nchunk) { 
-
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
-  int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * 2;
+  int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
 
-  //printf("%d/%d:%d/%d %d %d\n", threadIdx.x, blockIdx.x, blockIdx.y, nchunk, ichan, ochan);
-  //printf("%d\n", ochan);
-  
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
     b=0;
@@ -139,10 +135,8 @@ __global__ void CrossCorrShared(cuComplex **ants, cuComplex **accum, int nant, i
   extern __shared__ cuComplex antShar[];
   
   int nchan = blockDim.x * gridDim.x;
-  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk;
+  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
   const size_t ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
-
-  //printf("%ld %ld\n", ichan, ochan);
 
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
@@ -167,12 +161,12 @@ __global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) {
   int nchan = blockDim.x * gridDim.x;
 
   int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
-  int b = blockIdx.z*4+blockIdx.y;
+  int b = blockIdx.y*4+blockIdx.z;
   
   for (int i=1; i<nchunk; i++) {
     cuCaddIf(&accum[b][ichan], accum[b][ichan + i*nchan]);
   }
-  cuCdivCf(&accum[0][ichan], nchunk);
+  cuCdivCf(&accum[b][ichan], nchunk);
 }
 
 __global__ void printArray(cuComplex *a) {
