@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <strings.h>
 #include <argp.h>
-
+#include <complex.h>
 #include <cuComplex.h>
 #include <npp.h>
 #include "gxkernel.h"
@@ -43,12 +43,16 @@ static char args_doc[] = "";
 static struct argp_option options[] = {
   { "loops", 'n', "NLOOPS", 0, "run each performance test NLOOPS times" },
   { "threads", 't', "NTHREADS", 0, "run with NTHREADS threads on each test" },
+  { "antennas", 'a', "NANTENNAS", 0, "assume NANTENNAS antennas when required" },
+  { "channels", 'c', "NCHANNELS", 0, "assume NCHANNELS frequency channels when required" },
   { 0 }
 };
 
 struct arguments {
   int nloops;
   int nthreads;
+  int nantennas;
+  int nchannels;
 };
 
 /* The option parser */
@@ -62,6 +66,11 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   case 't':
     arguments->nthreads = atoi(arg);
     break;
+  case 'a':
+    arguments->nantennas = atoi(arg);
+    break;
+  case 'c':
+    arguments->nchannels = atoi(arg);
   }
   return 0;
 }
@@ -89,6 +98,8 @@ void time_stats(float *timearray, int ntime, float *average, float *min, float *
   return;
 }
 
+#define NOFRINGEROTATE
+
 int main(int argc, char *argv[]) {
   cudaError_t status;
   
@@ -96,25 +107,100 @@ int main(int argc, char *argv[]) {
   struct arguments arguments;
   arguments.nloops = 100;
   arguments.nthreads = 512;
+  arguments.nantennas = 6;
+  arguments.nchannels = 2048;
+  int npolarisations = 2;
+  
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
-  
-#ifndef NOADDCOMPLEX
+#ifndef NOUNPACK
   /*
-   * This benchmarks the performance of the complex number adder.
+   * This benchmarks unpacker kernels.
    */
-  cuFloatComplex a, b;
-  int i;
+  cuComplex **unpackedData;
+  int8_t **packedData, pb;
+  float *dtime_unpack=NULL, averagetime_unpack = 0.0;
+  float mintime_unpack = 0.0, maxtime_unpack = 0.0;
+  cudaEvent_t start_test_unpack, end_test_unpack;
+  dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
+  int i, j, k, l, unpackBlocks;
+
+  // Allocate the memory.
+  int packedBytes = arguments.nchannels * 2 * npolarisations / 8;
+  *packedData = new int8_t*[arguments.nantennas];
+  for (i = 0; i < arguments.nantennas; i++) {
+    gpuErrchk(cudaMalloc(&packedData[i], packedBytes));
+  }
+
+  for (i = 0; i < arguments.nantennas * npolarisations; i++) {
+    gpuErrchk(cudaMalloc(&unpackedData[i], arguments.nchannels * sizeof(cuComplex)));
+  }
+
+  unpackBlocks = arguments.nchannels / npolarisations / arguments.nthreads;
+  for (i = 0; i < arguments.nloops; i++) {
+    // Generate some random 2 bit data each loop.
+    for (j = 0; j < arguments.nantennas; j++) {
+      for (k = 0; k < packedBytes; k++) {
+	pb = 0;
+	for (l = 0; l < 4; l++) {
+	  pb = pb | (rand() % 4) << (l * 2);
+	}
+	packedData[j][k] = pb;
+      }
+    }
+
+    // Now do the unpacking.
+    preLaunchCheck();
+    cudaEventRecord(start_test_unpack, 0);
+    for (j = 0; j < arguments.nantennas; j++) {
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>(unpackedData, packedData[j], j);
+    }
+    cudaEventRecord(stop_test_unpack, 0);
+    cudaEventSynchronize(stop_test_unpack);
+    cudaEventElapsedTime(&(dtime_unpack[i]), start_test_unpack, stop_test_unpack);
+    postLaunchCheck();
+  }
+  (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
+		   &mintime_unpack, &maxtime_unpack);
+  printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
+  printf("Iterations | Average time | Min time | Max time |\n");
+  printf("%5d     | %8.3f ms | %8.3f ms | %8.3f ms |\n", arguments.nloops,
+	 averagetime_unpack, mintime_unpack, maxtime_unpack);
+  
+  
+  // Clean up.
+  cudaEventDestroy(start_test_unpack);
+  cudaEventDestroy(end_test_unpack);
+
+#endif
+  
+  
+#ifndef NOFRINGEROTATE
+  /*
+   * This benchmarks the performance of the fringe rotator kernel.
+   */
+  cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
+  int i, j, k;
+  unsigned long long GPUalloc = 0;
   float *dtime_addcomplex=NULL, averagetime_addcomplex = 0.0;
   float mintime_addcomplex = 0.0, maxtime_addcomplex = 0.0;
   cudaEvent_t start_test_addcomplex, end_test_addcomplex;
   dtime_addcomplex = (float *)malloc(arguments.nloops * sizeof(float));
+  // Prepare the large arrays.
+  for (i = 0; i < arguments.nantennas * npolarisations; i++) {
+    gpuErrchk(cudaMalloc(&unpacked[i], arguments.nchannels * sizeof(cuComplex)));
+    GPUalloc += arguments.nchannels * sizeof(cuComplex);
+  }
   for (i = 0; i < arguments.nloops; i++) {
     // Set the complex number values.
-    a = 1.0 + 2.0 * I;
-    b = 2.0 + 3.0 * I;
+    for (j = 0; j < arguments.nantennas * npolarisations; j++) {
+      for (k = 0; k < arguments.nchannels; k++) {
+	unpacked[j][k] = make_cuComplex(4.0 * ((float)rand() / (float)RAND_MAX),
+					4.0 * ((float)rand() / (float)RAND_MAX));
+      }
+    }
     
     preLaunchCheck();
     cudaEventRecord(start_test_addcomplex, 0);
