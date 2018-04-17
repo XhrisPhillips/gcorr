@@ -10,8 +10,6 @@
 #include <complex>
 #include <argp.h>
 
-//#include <chrono>  // for high_resolution_clock
-
 #include <cuComplex.h>
 #include <cufft.h>
 
@@ -76,12 +74,13 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 void allocDataGPU(int8_t ***packedData, cuComplex ***unpackedData, cuComplex ***unpackedData_h,
 		  cuComplex ***channelisedData, cuComplex ***channelisedData_h, cuComplex ***baselineData, cuComplex ***baselineData_h,
-		  int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int parallelAccum) {
+		  float ***rotVec, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum) {
   
   unsigned long long GPUalloc = 0;
 
   int packedBytes = subintsamples*nbit*nPol/8;
   *packedData = new int8_t*[numantenna];
+  
   for (int i=0; i<numantenna; i++) {
     gpuErrchk(cudaMalloc(&(*packedData)[i], packedBytes));
     GPUalloc += packedBytes;
@@ -119,6 +118,16 @@ void allocDataGPU(int8_t ***packedData, cuComplex ***unpackedData, cuComplex ***
   gpuErrchk(cudaMalloc(baselineData, nbaseline*4*sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy((*baselineData), baseline_h, nbaseline*4*sizeof(cuComplex*), cudaMemcpyHostToDevice));
   *baselineData_h = baseline_h;
+
+
+  // Fringe rotation vectors
+  float **rv = new float*[numantenna*sizeof(float)];
+  for (int i=0; i<numantenna; i++) {
+    gpuErrchk(cudaMalloc(&rv[i], numffts*2*sizeof(float)));
+    GPUalloc += numffts*2*sizeof(float);
+  }
+  gpuErrchk(cudaMalloc(rotVec, numantenna*2*sizeof(float*)));
+  gpuErrchk(cudaMemcpy(*rotVec, rv, numantenna*2*sizeof(float*), cudaMemcpyHostToDevice));
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
@@ -247,6 +256,7 @@ int main(int argc, char *argv[])
   vector<std::ifstream *> antStream;
 
   int8_t **packedData;
+  float **rotVec;
   cuComplex **unpackedData, **unpackedData_h, **channelisedData, **channelisedData_h, **baselineData, **baselineData_h;
   cufftHandle plan;
   
@@ -315,6 +325,9 @@ int main(int argc, char *argv[])
 
   // Final Cross Corr accumulation
   dim3 accumBlocks = dim3(blockchan, 4, nbaseline);
+
+  // Fringe Rotation
+  dim3 fringeBlocks = dim3(blockchan, numffts, numantennas);
   
   cout << "Allocate Memory" << endl;
   // Allocate space in the buffers for the data and the delays
@@ -322,8 +335,8 @@ int main(int argc, char *argv[])
 
   // Allocate space on the GPU
   allocDataGPU(&packedData, &unpackedData, &unpackedData_h, &channelisedData, &channelisedData_h,
-	       &baselineData, &baselineData_h, numantennas, subintsamples,
-	       nbit, nPol, iscomplex, numchannels, parallelAccum);
+	       &baselineData, &baselineData_h, &rotVec, numantennas, subintsamples,
+	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum);
 
   for (int i=0; i<numantennas; i++) {
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
@@ -357,6 +370,16 @@ int main(int argc, char *argv[])
     }
 
     // Fringe Rotate //
+    cout << "Fringe Rotate" << endl;
+    if (numffts%10) {
+      cerr << "Error: numffts must be divisible by 10" << endl;
+    }
+    dim3 FringeSetblocks = dim3(10, numantennas);
+    setFringeRotation<<<FringeSetblocks, numffts/10>>>(rotVec);
+    CudaCheckError();
+
+    FringeRotate<<<fringeBlocks,unpackThreads>>>(unpackedData, rotVec);
+    CudaCheckError();
   
     // FFT
     cout << "FFT data" << endl;

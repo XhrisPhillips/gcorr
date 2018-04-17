@@ -16,8 +16,7 @@ __host__ __device__ static __inline__ cuComplex cuCmulConjf (cuComplex x, cuComp
     prod = make_cuFloatComplex  ((cuCrealf(x) * cuCrealf(y)) + (cuCimagf(x) * cuCimagf(y)),
                                  (cuCimagf(x) * cuCrealf(y)) - cuCrealf(x) * cuCimagf(y));
     return prod;
-}
-
+}    
 
 // Divide a complex number by a constant
 __host__ __device__ static __inline__ void cuCdivCf(cuFloatComplex *a, float b)
@@ -51,6 +50,17 @@ void freeMem() {
   printf("GPU memory available %.1f/%.1f MBbytes\n", free/1024.0/1024, total/1024.0/1024);
 }
 
+
+/* Set fringe rotation vectors - dummy routine for now */
+__global__ void setFringeRotation(float **rotVec) {
+  size_t ifft = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t iant = blockIdx.y;
+
+  rotVec[iant][ifft*2] = 1e-6;
+  rotVec[iant][ifft*2+1] = 1e-12;
+}
+
+
 /* Fringe rotate a single antenna inplace, assuming dual pol data */
 
 __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
@@ -58,20 +68,29 @@ __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
   // ant[1] pointer to pol B
   // rotVec is an array of 2 values - initial phase and phase step per sample 
 
-  size_t ichan = threadIdx.x;
-  size_t ifft = 0;  // FFT block number  NEED TO CALCULATE
-  int fftsize  = blockIdx.x;
+  int fftsize = blockDim.x * gridDim.x;
+  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t ifft = blockIdx.y;
+  size_t iant = blockIdx.z;
 
-  float theta = rotVec[ifft][0] + ichan*rotVec[ifft][1];
-  cuRotatePhase(&ant[ifft*fftsize+ichan][0], theta);
-  cuRotatePhase(&ant[ifft*fftsize+ichan][1], theta);
+  if (iant>4) printf("iant too large: %d  %d:%d:%d\n", threadIdx.x, blockIdx.x, blockIdx.y, blockIdx.z);
+  if (ichan+ifft*fftsize > 6656000) printf("ochan too large: %d  %d:%d:%d\n", threadIdx.x, blockIdx.x, blockIdx.y, blockIdx.z);
+  
+  // phase and slope for this FFT
+  float p0 = rotVec[iant][ifft*2];
+  float p1 = rotVec[iant][ifft*2+1];
+  float theta = p0 + ichan*p1;
+
+  // Should precompute sin/cos
+  cuRotatePhase(&ant[iant*2][ichan+ifft*fftsize], theta);
+  cuRotatePhase(&ant[iant*2+1][ichan+ifft*fftsize], theta);
 }
 
 //__constant__ float levels_2bit[4];
 
 void init_2bitLevels() {
-  static const float HiMag = 3.3359;  // Optimal value
-  const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
+  //static const float HiMag = 3.3359;  // Optimal value
+  //const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
 
   //gpuErrchk(cudaMemcpyToSymbol(levels_2bit, lut4level, sizeof(levels_2bit)));
 }
