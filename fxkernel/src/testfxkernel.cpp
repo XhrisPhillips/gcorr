@@ -16,6 +16,16 @@ using std::vector;
 #include "fxkernel.h"
 #include "vectordefs.h"
 
+/** 
+ * @file testfxkernel.cpp
+ * @brief A test harness for fxkernel
+ *   
+ * This test harness reads a brief and simple config file, then creates a single
+ * FxKernel object and sets it up with the input data and delays, and then
+ * runs process (to process a single subintegration).  Timing information is gathered
+ * and written out along with the visibilities from this sub-integration.
+ */
+
 /**
  * Allocates the space for the raw (packed, quantised) voltage data.
  * @param data the data array to be allocated
@@ -140,7 +150,10 @@ int readdata(int bytestoread, vector<std::ifstream*> &antStream, u8 **inputdata)
   return(0);
 }
 
-
+/**
+ * Main function that actually runs the show
+ * @return 0 for success, positive for an error.
+ */
 int main(int argc, char *argv[])
 {
   // variables for the test
