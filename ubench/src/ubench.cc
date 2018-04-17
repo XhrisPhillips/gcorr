@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cassert>
 #include <cfloat>
 #include <complex>
@@ -16,6 +17,7 @@ using cfloat = std::complex<float>;
 typedef void (*accum_fn)(cfloat*, const cfloat*, int, int, int);
 
 void naive_accum(cfloat* out, const cfloat* data, int n, int m, int r);
+void sleep_10ms(cfloat* out, const cfloat* data, int n, int m, int r);
 
 // accum_fn(out, data, n, r, m):
 //
@@ -65,12 +67,13 @@ std::vector<cfloat> run_accum(const std::vector<cfloat>& data, int n, int r, int
 
     cfloat* a = accum.data();
     for (int i = 0; i<n; ++i) {
-        for (int j = 0; j<n; ++j) {
+        a[0] = 0;
+        for (int j = i+1; j<n; ++j) {
             const cfloat* u = data.data()+i*r;
             const cfloat* v = data.data()+j*r;
             for (int k = 0; k<r; k+=m) {
                 for (int l = 0; l<m; ++l) {
-                    a[i] += u[l]*std::conj(v[l]);
+                    a[l] += u[k+l]*std::conj(v[k+l]);
                 }
             }
             a += m;
@@ -81,8 +84,9 @@ std::vector<cfloat> run_accum(const std::vector<cfloat>& data, int n, int r, int
 
 void harness_accum(benchmark::State& state, accum_fn f) {
     int n = state.range(0);
-    int r = state.range(1);
+    int nfft = state.range(1);
     int m = state.range(2);
+    int r = m*nfft;
 
     std::vector<cfloat> data = random_data(n*r);
     std::vector<cfloat> expected = run_accum(data, n, r, m);
@@ -110,7 +114,7 @@ void harness_accum(benchmark::State& state, accum_fn f) {
 
         float ms = 0;
         cudaEventElapsedTime(&ms, ev[0], ev[1]);
-        state.SetIterationTime(ms*1000.0);
+        state.SetIterationTime(ms/1000.0);
     }
 
     cudaMemcpy(result.data(), gpu_result, result_bytes, cudaMemcpyDeviceToHost);
@@ -121,11 +125,10 @@ void harness_accum(benchmark::State& state, accum_fn f) {
 }
 
 void with_custom_args(benchmark::internal::Benchmark* b) {
-    for (int n = 4; n<=12; ++n) {
-        for (int m = 1625; m<=6500; m<<=1) {
-            int r = 1024*m;
-
-            std::vector<int64_t> args = {n, r, m};
+    for (int n = 4; n<=10; n+=2) {
+        for (int u = 1625; u<=6500; u<<=1) { // nfft
+            int m = 1024;
+            std::vector<int64_t> args = {n, u, m};
             b->Args(args)->UseManualTime();
         }
     }
@@ -133,8 +136,9 @@ void with_custom_args(benchmark::internal::Benchmark* b) {
 
 #define BENCH_ACCUM(fn)\
 void wrap##fn(benchmark::State& state) { harness_accum(state, fn); }\
-BENCHMARK(wrap##fn)->Apply(with_custom_args);
+BENCHMARK(wrap##fn)->Apply(with_custom_args)->Unit(benchmark::kMicrosecond);
 
 BENCH_ACCUM(naive_accum);
+//BENCH_ACCUM(sleep_10ms);
 
 BENCHMARK_MAIN();

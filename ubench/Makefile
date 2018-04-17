@@ -13,7 +13,7 @@ gbench-sources:=$(wildcard $(gbenchdir)/src/*.cc)
 
 -include $(patsubst %.cc,obj/gbench/%.d,$(notdir $(gbench-sources)))
 
-CXXFLAGS=-O3 -g
+CXXFLAGS=-O3 -g -DNDEBUG
 
 NVCC?=nvcc
 NVCCFLAGS+=-O3 -g
