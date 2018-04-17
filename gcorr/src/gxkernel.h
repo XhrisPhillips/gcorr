@@ -30,8 +30,8 @@ void freeMem();
 
 void init_2bitLevels();
 __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src);
-__global__ void setFringeRotation(float **rotVec);
-__global__ void FringeRotate(cuComplex *ant, float **rotVec);
+__global__ void setFringeRotation(float *rotVec);
+__global__ void FringeRotate(cuComplex *ant, float *rotVec);
 __global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
 __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
 __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk);

@@ -52,18 +52,19 @@ void freeMem() {
 
 
 /* Set fringe rotation vectors - dummy routine for now */
-__global__ void setFringeRotation(float **rotVec) {
+__global__ void setFringeRotation(float *rotVec) {
   size_t ifft = threadIdx.x + blockIdx.x * blockDim.x;
   size_t iant = blockIdx.y;
+  int numffts = blockDim.x * gridDim.x;
 
-  rotVec[iant][ifft*2] = 1e-6;
-  rotVec[iant][ifft*2+1] = 1e-12;
+  rotVec[iant*numffts*2 + ifft*2] = 1e-6;
+  rotVec[iant*numffts*2 + ifft*2+1] = 1e-12;
 }
 
 
 /* Fringe rotate a single antenna inplace, assuming dual pol data */
 
-__global__ void FringeRotate(cuComplex *ant, float **rotVec) {
+__global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   // ant[0] pointer to pol A
   // ant[1] pointer to pol B
   // rotVec is an array of 2 values - initial phase and phase step per sample 
@@ -76,8 +77,8 @@ __global__ void FringeRotate(cuComplex *ant, float **rotVec) {
   int subintsamples = numffts * fftsize * 2;
 
   // phase and slope for this FFT
-  float p0 = rotVec[iant][ifft*2];
-  float p1 = rotVec[iant][ifft*2+1];
+  float p0 = rotVec[iant*numffts*2 + ifft*2];
+  float p1 = rotVec[iant*numffts*2 + ifft*2+1];
   float theta = p0 + ichan*p1;
 
   // Should precompute sin/cos
