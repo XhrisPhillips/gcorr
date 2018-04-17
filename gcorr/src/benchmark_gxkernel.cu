@@ -157,9 +157,9 @@ int main(int argc, char *argv[]) {
     for (j = 0; j < arguments.nantennas; j++) {
       unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
     }
-    cudaEventRecord(stop_test_unpack, 0);
-    cudaEventSynchronize(stop_test_unpack);
-    cudaEventElapsedTime(&(dtime_unpack[i]), start_test_unpack, stop_test_unpack);
+    cudaEventRecord(end_test_unpack, 0);
+    cudaEventSynchronize(end_test_unpack);
+    cudaEventElapsedTime(&(dtime_unpack[i]), start_test_unpack, end_test_unpack);
     postLaunchCheck();
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
