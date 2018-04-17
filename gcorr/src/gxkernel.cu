@@ -74,10 +74,6 @@ __global__ void setFringeRotation(float *rotVec) {
 /* Fringe rotate a single antenna inplace, assuming dual pol data */
 
 __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
-  // ant[0] pointer to pol A
-  // ant[1] pointer to pol B
-  // rotVec is an array of 2 values - initial phase and phase step per sample 
-
   int fftsize = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
@@ -95,27 +91,24 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   cuRotatePhase(&ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], theta);
 }
 
-__global__ void FringeRotate2(cuComplex **ant, float **rotVec) {
-  // ant[0] pointer to pol A
-  // ant[1] pointer to pol B
-  // rotVec is an array of 2 values - initial phase and phase step per sample 
-
+__global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
   int fftsize = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
   size_t iant = blockIdx.z;
+  int numffts = blockDim.y * gridDim.y;
+  int subintsamples = numffts * fftsize * 2;
 
   // phase and slope for this FFT
-  float p0 = rotVec[iant][ifft*2];
-  float p1 = rotVec[iant][ifft*2+1];
+  float p0 = rotVec[iant*numffts + ifft*2];
+  float p1 = rotVec[iant*numffts + ifft*2+1];
   float theta = p0 + ichan*p1;
 
-  // Should precompute sin/cos
+ // Should precompute sin/cos
   float sinT, cosT;
   __sincosf(theta, &sinT, &cosT);
-  
-  cuRotatePhase2(ant[iant*2][ichan+ifft*fftsize], sinT, cosT);
-  cuRotatePhase2(ant[iant*2+1][ichan+ifft*fftsize], sinT, cosT);
+  cuRotatePhase2(ant[iant*2*subintsamples + ichan+ifft*fftsize], sinT, cosT);
+  cuRotatePhase2(ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], sinT, cosT);
 }
 
 //__constant__ float levels_2bit[4];

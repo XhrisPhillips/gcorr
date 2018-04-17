@@ -356,6 +356,7 @@ int main(int argc, char *argv[])
     //cout << "Fringe Rotate" << endl;
     if (numffts%8) {
       cerr << "Error: numffts must be divisible by 8" << endl;
+      exit(1);
     }
     dim3 FringeSetblocks = dim3(8, numantennas);
     setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
