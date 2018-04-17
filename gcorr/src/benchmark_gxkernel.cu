@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
   curandGenerator_t gen;
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
-  int i, j, unpackBlocks;
+  int i, j, unpackBlocks, unpackBlocks2;
 
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
@@ -189,6 +189,7 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMemcpy(unpackedData2, unpacked2, arguments.nantennas * sizeof(cuComplex*), cudaMemcpyHostToDevice));
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
+  unpackBlocks2 = arguments.nsamples / arguments.nthreads;
   printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
@@ -232,7 +233,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack2, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData2[j], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks2, arguments.nthreads>>>(unpackedData2[j], packedData[j]);
     }
     cudaEventRecord(end_test_unpack2, 0);
     cudaEventSynchronize(end_test_unpack2);
