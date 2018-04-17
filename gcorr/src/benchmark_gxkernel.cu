@@ -5,6 +5,8 @@
 #include <complex.h>
 #include <cuComplex.h>
 #include <npp.h>
+#include <cuda.h>
+#include <curand.h>
 #include "gxkernel.h"
 
 /*
@@ -107,7 +109,6 @@ void time_stats(float *timearray, int ntime, float *average, float *min, float *
 #define NOFRINGEROTATE
 
 int main(int argc, char *argv[]) {
-  cudaError_t status;
   
   /* Default argument values first. */
   struct arguments arguments;
@@ -131,12 +132,13 @@ int main(int argc, char *argv[]) {
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpackedData;
-  int8_t **packedData, pb, *randomData;
+  int8_t **packedData, *randomData;
   float *dtime_unpack=NULL, averagetime_unpack = 0.0;
   float mintime_unpack = 0.0, maxtime_unpack = 0.0;
   cudaEvent_t start_test_unpack, end_test_unpack;
+  curandGenerator_t gen;
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
-  int i, j, k, l, unpackBlocks;
+  int i, j, k, unpackBlocks;
 
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
@@ -158,7 +160,13 @@ int main(int argc, char *argv[]) {
   
   cudaEventCreate(&start_test_unpack);
   cudaEventCreate(&end_test_unpack);
-  randomData = (int8_t*)malloc(packedBytes * sizeof(int8_t));
+  // Generate some random data.
+  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
+  for (i = 0; i < arguments.nantennas; i++) {
+    curandGenerateUniform(gen, (float*)packedData[j], packedBytes * (sizeof(int8_t) / sizeof(float)));
+  }
+  curandDestroyGenerator(gen);
   for (i = 0; i < arguments.nloops; i++) {
     printf("\nLOOP %d\n", i);
     // Generate some random 2 bit data each loop.

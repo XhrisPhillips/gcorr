@@ -14,7 +14,7 @@ OBJECTS = $(SOURCES:.cu=.o)
 
 CUFLAGS	=
 
-CLINK	= -lcudart -lcufft
+CLINK	= -lcudart -lcufft -lcurand
 
 %.o : %.cu
 	$(NVCC) $(CUFLAGS) -c $<
