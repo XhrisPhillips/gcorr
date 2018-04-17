@@ -102,8 +102,8 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
   GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
 
   // Fringe rotation vector
-  gpuErrchk(cudaMalloc(rotVec, numantenna*2*numffts*2*sizeof(float)));
-  GPUalloc += numantenna*2*numffts*2*sizeof(float);
+  gpuErrchk(cudaMalloc(rotVec, numantenna*numffts*2*sizeof(float)));
+  GPUalloc += numantenna*numffts*2*sizeof(float);
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
@@ -235,6 +235,7 @@ int main(int argc, char *argv[])
   float *rotVec;
   cuComplex *unpackedData, *channelisedData, *baselineData;
   cufftHandle plan;
+  cudaEvent_t start_exec, stop_exec;
   
   // Read in the command line arguments.
   struct arguments arguments;
@@ -250,8 +251,9 @@ int main(int argc, char *argv[])
   printf("running %d loops\n", arguments.nloops);
   printf("will output %s data\n", (arguments.output_binary == 0) ? "text" : "binary");
 
-  //configfile = argv[1];
-
+  cudaEventCreate(&start_exec);
+  cudaEventCreate(&stop_exec);
+  
   void init_2bitLevels();
 
   // load up the test input data and delays from the configfile
@@ -268,6 +270,11 @@ int main(int argc, char *argv[])
   int fftchannels = numchannels*cfactor;
   int subintsamples = numffts*fftchannels;  // Number of time samples - need to factor # channels (pols) also
   cout << "Subintsamples= " << subintsamples << endl;
+
+  float sampleTime = 1/bandwidth;
+  if (!iscomplex) sampleTime /= 2; 
+  float subintTime = subintsamples*sampleTime;
+  cout << "Subint = " << subintTime*1000 << " msec" << endl;
 
   // Setup threads and blocks for the various kernels
   // Unpack
@@ -324,7 +331,6 @@ int main(int argc, char *argv[])
     return(0);
   }
   
-  // One loop for now
   status = readdata(subintbytes, antStream, inputdata);
   if (status) exit(1);
 
@@ -334,6 +340,7 @@ int main(int argc, char *argv[])
     gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
   }
 
+  cudaEventRecord(start_exec, 0);
   for (int l=0; l<arguments.nloops; l++) {
   
     // Set the delays //
@@ -346,7 +353,7 @@ int main(int argc, char *argv[])
     }
 
     // Fringe Rotate //
-    cout << "Fringe Rotate" << endl;
+    //cout << "Fringe Rotate" << endl;
     if (numffts%8) {
       cerr << "Error: numffts must be divisible by 8" << endl;
     }
@@ -354,7 +361,7 @@ int main(int argc, char *argv[])
     setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
     CudaCheckError();
 
-    FringeRotate<<<fringeBlocks,unpackThreads>>>(unpackedData, rotVec);
+    FringeRotate2<<<fringeBlocks,unpackThreads>>>(unpackedData, rotVec);
     CudaCheckError();
   
     // FFT
@@ -367,14 +374,23 @@ int main(int argc, char *argv[])
     // Cross correlate
     gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
     cout << "Cross correlate" << endl;
-    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-    //CrossCorrShared<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    //CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex)>>>(channelisedData, baselineData, numantennas, nchunk);
     CudaCheckError();
-    
-    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum, nchunk);
+
+    // cout << "Finalise" << endl;
+    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
     CudaCheckError();
 
   }
+  
+  float dtime;
+  cudaEventRecord(stop_exec, 0);
+  cudaEventSynchronize(stop_exec);
+  cudaEventElapsedTime(&dtime, start_exec, stop_exec);
+
+  cout << "Total execution time for " << arguments.nloops << " loops =  " <<  dtime << " ms" << endl;
+
   saveVisibilities("vis.out", baselineData, nbaseline, numchannels, parallelAccum, bandwidth);
 
   cudaDeviceSynchronize();

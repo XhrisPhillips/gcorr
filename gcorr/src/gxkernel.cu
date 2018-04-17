@@ -1,7 +1,6 @@
 #include <cuComplex.h>
 #include "gxkernel.h"
 
-
 // Add complex number to another number 
 __host__ __device__ static __inline__ void cuCaddIf(cuFloatComplex *a, cuFloatComplex b)
 {
@@ -39,6 +38,16 @@ __host__ __device__ static __inline__ void cuRotatePhase (cuComplex *x, float th
   return;
 }
 
+// Rotate inplace a complex number by theta (radians)
+__host__ __device__ static __inline__ void cuRotatePhase2 (cuComplex &x, float &sinA, float &cosA)
+{
+  float px = x.x * cosA - x.y * sinA; 
+  float py = x.x * sinA + x.y * cosA;
+  x.x = px;
+  x.y = py;
+  return;
+}
+
 void freeMem() {
   cudaError_t status;
   size_t free, total;
@@ -57,8 +66,8 @@ __global__ void setFringeRotation(float *rotVec) {
   size_t iant = blockIdx.y;
   int numffts = blockDim.x * gridDim.x;
 
-  rotVec[iant*numffts*2 + ifft*2] = 1e-6;
-  rotVec[iant*numffts*2 + ifft*2+1] = 1e-12;
+  rotVec[iant*numffts + ifft*2] = 1e-6;
+  rotVec[iant*numffts + ifft*2+1] = 1e-12;
 }
 
 
@@ -77,13 +86,36 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   int subintsamples = numffts * fftsize * 2;
 
   // phase and slope for this FFT
-  float p0 = rotVec[iant*numffts*2 + ifft*2];
-  float p1 = rotVec[iant*numffts*2 + ifft*2+1];
+  float p0 = rotVec[iant*numffts + ifft*2];
+  float p1 = rotVec[iant*numffts + ifft*2+1];
   float theta = p0 + ichan*p1;
 
   // Should precompute sin/cos
   cuRotatePhase(&ant[iant*2*subintsamples + ichan+ifft*fftsize], theta);
   cuRotatePhase(&ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], theta);
+}
+
+__global__ void FringeRotate2(cuComplex **ant, float **rotVec) {
+  // ant[0] pointer to pol A
+  // ant[1] pointer to pol B
+  // rotVec is an array of 2 values - initial phase and phase step per sample 
+
+  int fftsize = blockDim.x * gridDim.x;
+  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t ifft = blockIdx.y;
+  size_t iant = blockIdx.z;
+
+  // phase and slope for this FFT
+  float p0 = rotVec[iant][ifft*2];
+  float p1 = rotVec[iant][ifft*2+1];
+  float theta = p0 + ichan*p1;
+
+  // Should precompute sin/cos
+  float sinT, cosT;
+  __sincosf(theta, &sinT, &cosT);
+  
+  cuRotatePhase2(ant[iant*2][ichan+ifft*fftsize], sinT, cosT);
+  cuRotatePhase2(ant[iant*2+1][ichan+ifft*fftsize], sinT, cosT);
 }
 
 //__constant__ float levels_2bit[4];
@@ -158,18 +190,19 @@ __global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchun
   int parallelAccum = blockDim.y * gridDim.y;
   int subintsamples = parallelAccum * nchan * nchunk * 2;
 
-  int i,j, l, b;
+  int i, j, l, b;
   for (l=0; l<nchunk; l++) {
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[i*2*subintsamples + ichan], ants[j*2*subintsamples + ichan]));
-	b++;
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[i*2*subintsamples + ichan], ants[(j*2+1)*subintsamples + ichan]));
-	b++;
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[(i*2+1)*subintsamples + ichan], ants[j*2*subintsamples + ichan]));
-	b++;
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[(i*2+1)*subintsamples + ichan], ants[(j*2+1)*subintsamples + ichan]));
+	cuCaddIf(&accum[accumIdx(b, 0, ochan, nchan*parallelAccum)],
+	  cuCmulConjf(ants[antIdx(i, 0, ichan, subintsamples)], ants[antIdx(j, 0, ichan, subintsamples)]));
+	cuCaddIf(&accum[accumIdx(b, 1, ochan, nchan*parallelAccum)],
+	  cuCmulConjf(ants[antIdx(i, 0, ichan, subintsamples)], ants[antIdx(j, 1, ichan, subintsamples)]));
+	cuCaddIf(&accum[accumIdx(b, 2, ochan, nchan*parallelAccum)],
+	  cuCmulConjf(ants[antIdx(i, 1, ichan, subintsamples)], ants[antIdx(j, 0, ichan, subintsamples)]));
+	cuCaddIf(&accum[accumIdx(b, 3, ochan, nchan*parallelAccum)],
+	  cuCmulConjf(ants[antIdx(i, 1, ichan, subintsamples)], ants[antIdx(j, 1, ichan, subintsamples)]));
 	b++;
       }
     }
@@ -187,21 +220,18 @@ __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int
   int parallelAccum = blockDim.y * gridDim.y;
   int subintsamples = parallelAccum * nchan * nchunk * 2;
 
-  int i,j, l, b;
+  int i, j, l, b;
   for (l=0; l<nchunk; l++) {
-    if (threadIdx.x<nant*2) antShar[threadIdx.x] = ants[threadIdx.x*subintsamples + ichan];
+    if (threadIdx.x<nant*2) antShar[threadIdx.x] = ants[antIdx(threadIdx.x / 2, threadIdx.x % 2, ichan, subintsamples)];
     __syncthreads();
-    
+
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2], antShar[j*2]));
-	b++;
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
-	b++;
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
-	b++;
-	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
+	cuCaddIf(&accum[accumIdx(b, 0, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2], antShar[j*2]));
+	cuCaddIf(&accum[accumIdx(b, 1, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
+	cuCaddIf(&accum[accumIdx(b, 2, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
+	cuCaddIf(&accum[accumIdx(b, 3, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
 	b++;
       }
     }
@@ -212,14 +242,15 @@ __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int
 __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) { 
 
   int nchan = blockDim.x * gridDim.x;
-
   int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
-  int b = blockIdx.y+blockIdx.z*4;
+  int prod = blockIdx.y;
+  int b = blockIdx.z;
   
   for (int i=1; i<nchunk; i++) {
-    cuCaddIf(&accum[b*nchan*parallelAccum + ichan], accum[b*nchan*parallelAccum + ichan + i*nchan]);
+    cuCaddIf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)],
+      accum[accumIdx(b, prod, ichan + i*nchan, nchan*parallelAccum)]);
   }
-  cuCdivCf(&accum[b*nchan*parallelAccum + ichan], nchunk);
+  cuCdivCf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)], nchunk);
 }
 
 __global__ void printArray(cuComplex *a) {
