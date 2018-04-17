@@ -84,18 +84,18 @@ void init_2bitLevels() {
   a factor of 2 smaller than numbwe of time samples (4 than total # samples).
 */
 
-__global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant) {
+__global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src) {
   static const float HiMag = 3.3359;  // Optimal value
   const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
-  const int a = iant*2;
   const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
+  int subintsamples = 2 * blockDim.x * gridDim.x;
   int j = i*2;
 
-  dest[a][j] = make_cuFloatComplex(levels_2bit[src[i]&0x3], 0);
-  dest[a+1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>2)&0x3], 0);
+  dest[j] = make_cuFloatComplex(levels_2bit[src[i]&0x3], 0);
+  dest[subintsamples + j] = make_cuFloatComplex(levels_2bit[(src[i]>>2)&0x3], 0);
   j++;
-  dest[a][j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
-  dest[a+1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
+  dest[j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
+  dest[subintsamples + j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
 }
 
 
@@ -110,53 +110,65 @@ __global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int 
 */
 
 
-__global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nchunk) { 
+__global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk) { 
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
   int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
+  int parallelAccum = blockDim.y * gridDim.y;
+  int subintsamples = parallelAccum * nchan * nchunk * 2;
 
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2][ichan], ants[j*2][ichan]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2][ichan], ants[j*2+1][ichan]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2+1][ichan], ants[j*2][ichan]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2+1][ichan], ants[j*2+1][ichan]));
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[i*2*subintsamples + ichan], ants[j*2*subintsamples + ichan]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[i*2*subintsamples + ichan], ants[(j*2+1)*subintsamples + ichan]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[(i*2+1)*subintsamples + ichan], ants[j*2*subintsamples + ichan]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[(i*2+1)*subintsamples + ichan], ants[(j*2+1)*subintsamples + ichan]));
+	b++;
       }
     }
     ichan += nchan*2;
   }
 }
 
-__global__ void CrossCorrShared(cuComplex **ants, cuComplex **accum, int nant, int nchunk) { 
+__global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk) { 
 
   extern __shared__ cuComplex antShar[];
   
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
   const size_t ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
+  int parallelAccum = blockDim.y * gridDim.y;
+  int subintsamples = parallelAccum * nchan * nchunk * 2;
 
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
-    if (threadIdx.x<nant*2) antShar[threadIdx.x] = ants[threadIdx.x][ichan];
+    if (threadIdx.x<nant*2) antShar[threadIdx.x] = ants[threadIdx.x*subintsamples + ichan];
     __syncthreads();
     
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2], antShar[j*2]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2], antShar[j*2]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
+	b++;
       }
     }
     ichan += nchan*2;
   }
 }
 
-__global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) { 
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) { 
 
   int nchan = blockDim.x * gridDim.x;
 
@@ -164,9 +176,9 @@ __global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) {
   int b = blockIdx.y+blockIdx.z*4;
   
   for (int i=1; i<nchunk; i++) {
-    cuCaddIf(&accum[b][ichan], accum[b][ichan + i*nchan]);
+    cuCaddIf(&accum[b*nchan*parallelAccum + ichan], accum[b*nchan*parallelAccum + ichan + i*nchan]);
   }
-  cuCdivCf(&accum[b][ichan], nchunk);
+  cuCdivCf(&accum[b*nchan*parallelAccum + ichan], nchunk);
 }
 
 __global__ void printArray(cuComplex *a) {
