@@ -164,23 +164,11 @@ int main(int argc, char *argv[]) {
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
   for (i = 0; i < arguments.nantennas; i++) {
-    curandGenerateUniform(gen, (float*)packedData[j], packedBytes * (sizeof(int8_t) / sizeof(float)));
+    curandGenerateUniform(gen, (float*)packedData[i], packedBytes * (sizeof(int8_t) / sizeof(float)));
   }
   curandDestroyGenerator(gen);
   for (i = 0; i < arguments.nloops; i++) {
     printf("\nLOOP %d\n", i);
-    // Generate some random 2 bit data each loop.
-    for (j = 0; j < arguments.nantennas; j++) {
-      for (k = 0; k < packedBytes; k++) {
-	//pb = rand() % 256;
-	randomData[k] = rand() % 256;
-      }
-	/*for (l = 0; l < 4; l++) {
-	  pb = pb | (rand() % 4) << (l * 2);
-	  }*/
-      gpuErrchk(cudaMemcpy(&packedData[j][0], &randomData, (size_t)(packedBytes * sizeof(int8_t)), cudaMemcpyHostToDevice));
-      //}
-    }
 
     // Now do the unpacking.
     preLaunchCheck();
