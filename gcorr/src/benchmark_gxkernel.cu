@@ -155,7 +155,8 @@ int main(int argc, char *argv[]) {
    * This benchmarks unpacker kernels.
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
-  cuComplex **unpackedData;
+  cuComplex **unpacked2 = new cuComplex*[arguments.nantennas];
+  cuComplex **unpackedData, **unpackedData2;
   int8_t **packedData;
   float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
@@ -180,6 +181,12 @@ int main(int argc, char *argv[]) {
   }
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
+
+  for (i = 0; i < arguments.nantennas; i++) {
+    gpuErrchk(cudaMalloc(&unpacked2[i], arguments.nsamples * npolarisations * sizeof(cuComplex)));
+  }
+  gpuErrchk(cudaMalloc(&unpackedData2, arguments.nantennas * sizeof(cuComplex*)));
+  gpuErrchk(cudaMemcpy(unpackedData2, unpacked2, arguments.nantennas * sizeof(cuComplex*), cudaMemcpyHostToDevice));
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
   printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
@@ -225,7 +232,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack2, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData[j], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData2[j], packedData[j]);
     }
     cudaEventRecord(end_test_unpack2, 0);
     cudaEventSynchronize(end_test_unpack2);
@@ -247,12 +254,12 @@ int main(int argc, char *argv[]) {
     implied_time /= 2 * (float)arguments.bandwidth;
   }
   printf("\n==== ROUTINE: old_unpack2bit_2chan ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up |\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
 	 averagetime_unpack, mintime_unpack, maxtime_unpack, implied_time,
 	 ((implied_time * 1e3) / averagetime_unpack));
   printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up |\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
 	 averagetime_unpack2, mintime_unpack2, maxtime_unpack2, implied_time,
 	 ((implied_time * 1e3) / averagetime_unpack2));
