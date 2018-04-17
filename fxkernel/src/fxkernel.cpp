@@ -336,10 +336,18 @@ void FxKernel::process()
     int b = 0; // Baseline counter
     for(int j=0;j<numantennas-1;j++)
     {
-      if (!antValid[j]) continue;
+      if (!antValid[j])
+      {
+        b+=(numantennas-(j+1));
+        continue;
+      }
       for(int k=j+1;k<numantennas;k++)
       {
-	if (!antValid[k]) continue;
+	if (!antValid[k]) 
+	{
+          b++;
+          continue;
+        }
 	
 	for(int l=0;l<2;l++)
 	{
@@ -350,7 +358,6 @@ void FxKernel::process()
 	  }
 	}
 	baselineCount[b]++;
-	b++;
       }
     }
   }

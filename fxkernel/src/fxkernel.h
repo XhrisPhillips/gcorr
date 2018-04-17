@@ -15,37 +15,63 @@ public:
   void saveVisibilities(const char * outfile, int runtimens, std::string starttimestring);
 
 private:
-  /* Method to unpack the coarsely quantised input data to complex floats */
+  /**
+   * Method to unpack the coarsely quantised input data to complex floats
+   * @param inputdata an array of packed voltage data of length 1 byte 
+   * @param unpacked an array of unpacked voltage data; complex float with 32 bit real and 32 bit imaginary
+   * @param offset the offset from the start time of the data in number of samples
+   */
   void unpack(u8 * inputdata, cf32 ** unpacked, int offset);
 
-  /* Method to get the station delay for a given station for a given FFT */
+  /**
+   * Method to get the station delay for a given station for a given FFT
+   * @param antenna the current antenna being processed
+   * @param fftindex index of FFT within one subint you want to process
+   * @param meandelay the required time delay at the midpoint of the FFT interval in seconds
+   * @param a gradiant of delay with time; seconds per FFT interval
+   * @param b delay in seconds at the start of FFT interval
+   */
   void getStationDelay(int antenna, int fftindex, double & meandelay, double & a, double & b);
 
-  /* Method to fringe rotcfate the unpacked data in place */
+  /**
+   * Method to fringe rotate the unpacked data in place
+   * @param unpacked array of unpacked voltage data (complex 32bit float)
+   * @param a gradiant of delay with time; seconds per FFT interval
+   * @param b delay in seconds at the start of FFT interval
+   */
   void fringerotate(cf32 ** unpacked, f64 a, f64 b);
 
-  /* Method to channelised (FFT) the data, not in place */
+  /**
+   * Method to channelise (FFT) the data, not in place
+   * @param unpacked array of unpacked voltage data (complex 32bit float)
+   * @param array containing FFTed (channelised) unpacked data array (complex 32bit float)
+   */
   void dofft(cf32 ** unpacked, cf32 ** channelised);
 
-  /* Method to calculate complex conjugate of the channelised data */
+  /**
+   * Method to calculate complex conjugate of the channelised data
+   * @param channelised array containing FFTed (channelised) unpacked data array (complex 32bit float)
+   * @param complex conjugate of channelised data array
+   */
   void conjChannels(cf32 ** channelised, cf32 ** conjchannels);
 
-  /* Method to correct fractional sample delay of the channelised data in-place */
+  /**
+   * Method to correct fractional sample delay of the channelised data in-place
+   * @param channelised channelised array containing FFTed (channelised) unpacked data array (complex 32bit float)
+   * @param fracdelay resisdual delay after course integer delay correction 
+   */
   void fracSampleCorrect(cf32 ** channelised, f64 fracdelay);
   
-  // input data array
-  u8 ** inputdata;
+  u8 ** inputdata; /**< input data array */
 
-  // unpacked data (fringe rotation is performed in-place here)
-  cf32 *** unpacked;
+  cf32 *** unpacked; /**< unpacked data (fringe rotation is performed in-place here) */
 
-  // channelised data, and conjugated values
-  cf32 *** channelised;
-  cf32 *** conjchannels;
+  cf32 *** channelised; /**< channelised data */
+  cf32 *** conjchannels; /**< conjugated values */
 
   // Validity/weights
-  bool *antValid;
-  int *baselineCount;
+  bool *antValid; /**< checks if there is good data for the given antenna at a given time (if yes, it will accumulate; if not, if will leave this data out) */
+  int *baselineCount; /**< counter incrementing number of baselines with successfully obtained cross correlations and accumulations */
   
   // output data array
   cf32 *** visibilities;
