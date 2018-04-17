@@ -75,7 +75,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     arguments->nchannels = atoi(arg);
     break;
   case 's':
-    arguments->nsamples = atoi(args);
+    arguments->nsamples = atoi(arg);
     break;
   }
   return 0;
