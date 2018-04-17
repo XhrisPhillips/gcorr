@@ -56,8 +56,8 @@ __global__ void setFringeRotation(float *rotVec) {
   size_t iant = blockIdx.y;
   int numffts = blockDim.x * gridDim.x;
 
-  rotVec[iant*numffts*2 + ifft*2] = 1e-6;
-  rotVec[iant*numffts*2 + ifft*2+1] = 1e-12;
+  rotVec[iant*numffts + ifft*2] = 1e-6;
+  rotVec[iant*numffts + ifft*2+1] = 1e-12;
 }
 
 
@@ -76,8 +76,8 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   int subintsamples = numffts * fftsize * 2;
 
   // phase and slope for this FFT
-  float p0 = rotVec[iant*numffts*2 + ifft*2];
-  float p1 = rotVec[iant*numffts*2 + ifft*2+1];
+  float p0 = rotVec[iant*numffts + ifft*2];
+  float p1 = rotVec[iant*numffts + ifft*2+1];
   float theta = p0 + ichan*p1;
 
   // Should precompute sin/cos
