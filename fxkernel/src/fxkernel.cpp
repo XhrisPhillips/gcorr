@@ -31,6 +31,15 @@ void initLUT2bitReal () {
   }
 }
 
+/** 
+ * @class FxKernel
+ * @brief A test harness for fxkernel
+ *   
+ * This test harness reads a brief and simple config file, then creates a single
+ * FxKernel object and sets it up with the input data and delays, and then
+ * runs process (to process a single subintegration).  Timing information is gathered
+ * and written out along with the visibilities from this sub-integration.
+ */
 FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double bw)
   : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), nbits(numbits), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
 {
@@ -336,10 +345,18 @@ void FxKernel::process()
     int b = 0; // Baseline counter
     for(int j=0;j<numantennas-1;j++)
     {
-      if (!antValid[j]) continue;
+      if (!antValid[j])
+      {
+        b += (numantennas-(j+1));
+        continue;
+      }
       for(int k=j+1;k<numantennas;k++)
       {
-	if (!antValid[k]) continue;
+	if (!antValid[k]) 
+	{
+          b++;
+          continue;
+        }
 	
 	for(int l=0;l<2;l++)
 	{
@@ -350,7 +367,7 @@ void FxKernel::process()
 	  }
 	}
 	baselineCount[b]++;
-	b++;
+        b++;
       }
     }
   }
