@@ -313,7 +313,7 @@ int main(int argc, char *argv[])
   }
 
   // Configure CUFFT
-  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, numffts) != CUFFT_SUCCESS) {
+  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, 2*numantennas*numffts) != CUFFT_SUCCESS) {
     cout << "CUFFT error: Plan creation failed" << endl;
     return(0);
   }
@@ -343,11 +343,9 @@ int main(int argc, char *argv[])
   
     // FFT
     cout << "FFT data" << endl;
-    for (int i=0; i<numantennas*2; i++) {
-      if (cufftExecC2C(plan, &unpackedData[i*subintsamples], &channelisedData[i*subintsamples], CUFFT_FORWARD) != CUFFT_SUCCESS) {
-	cout << "CUFFT error: ExecC2C Forward failed" << endl;
-	return(0);
-      }
+    if (cufftExecC2C(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+      cout << "CUFFT error: ExecC2C Forward failed" << endl;
+      return(0);
     }
 
     // Cross correlate
