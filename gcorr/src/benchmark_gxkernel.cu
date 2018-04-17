@@ -142,6 +142,9 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
 
   unpackBlocks = arguments.nchannels / npolarisations / arguments.nthreads;
+
+  cudaEventCreate(&start_test_unpack);
+  cudaEventCreate(&end_test_unpack);
   for (i = 0; i < arguments.nloops; i++) {
     // Generate some random 2 bit data each loop.
     for (j = 0; j < arguments.nantennas; j++) {
