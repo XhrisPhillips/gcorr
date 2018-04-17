@@ -81,9 +81,9 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 void time_stats(float *timearray, int ntime, float *average, float *min, float *max) {
   int i = 0;
   *average = 0.0;
-  for (i = 0; i < ntime; i++) {
+  for (i = 1; i < ntime; i++) {
     *average += timearray[i];
-    if (i == 0) {
+    if (i == 1) {
       *min = timearray[i];
       *max = timearray[i];
     } else {
@@ -92,8 +92,8 @@ void time_stats(float *timearray, int ntime, float *average, float *min, float *
     }
   }
 
-  if (ntime > 0) {
-    *average /= (float)ntime;
+  if ((ntime - 1) > 0) {
+    *average /= (float)(ntime - 1);
   }
   return;
 }
@@ -113,6 +113,9 @@ int main(int argc, char *argv[]) {
   
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
+  // Always discard the first trial.
+  arguments.nloops += 1;
+  
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
 #ifndef NOUNPACK
@@ -171,8 +174,8 @@ int main(int argc, char *argv[]) {
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
   printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
-  printf("Iterations | Average time | Min time | Max time |\n");
-  printf("%5d     | %8.3f ms | %8.3f ms | %8.3f ms |\n", arguments.nloops,
+  printf("Iterations | Average time |   Min time   |   Max time   |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms |\n", arguments.nloops,
 	 averagetime_unpack, mintime_unpack, maxtime_unpack);
   
   
