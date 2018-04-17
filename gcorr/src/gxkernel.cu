@@ -39,6 +39,16 @@ __host__ __device__ static __inline__ void cuRotatePhase (cuComplex *x, float th
   return;
 }
 
+// Rotate inplace a complex number by theta (radians)
+__host__ __device__ static __inline__ void cuRotatePhase2 (cuComplex &x, float &sinA, float &cosA)
+{
+  float px = x.x * cosA - x.y * sinA; 
+  float py = x.x * sinA + x.y * cosA;
+  x.x = px;
+  x.y = py;
+  return;
+}
+
 void freeMem() {
   cudaError_t status;
   size_t free, total;
@@ -73,9 +83,6 @@ __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
   size_t ifft = blockIdx.y;
   size_t iant = blockIdx.z;
 
-  if (iant>4) printf("iant too large: %d  %d:%d:%d\n", threadIdx.x, blockIdx.x, blockIdx.y, blockIdx.z);
-  if (ichan+ifft*fftsize > 6656000) printf("ochan too large: %d  %d:%d:%d\n", threadIdx.x, blockIdx.x, blockIdx.y, blockIdx.z);
-  
   // phase and slope for this FFT
   float p0 = rotVec[iant][ifft*2];
   float p1 = rotVec[iant][ifft*2+1];
@@ -84,6 +91,29 @@ __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
   // Should precompute sin/cos
   cuRotatePhase(&ant[iant*2][ichan+ifft*fftsize], theta);
   cuRotatePhase(&ant[iant*2+1][ichan+ifft*fftsize], theta);
+}
+
+__global__ void FringeRotate2(cuComplex **ant, float **rotVec) {
+  // ant[0] pointer to pol A
+  // ant[1] pointer to pol B
+  // rotVec is an array of 2 values - initial phase and phase step per sample 
+
+  int fftsize = blockDim.x * gridDim.x;
+  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t ifft = blockIdx.y;
+  size_t iant = blockIdx.z;
+
+  // phase and slope for this FFT
+  float p0 = rotVec[iant][ifft*2];
+  float p1 = rotVec[iant][ifft*2+1];
+  float theta = p0 + ichan*p1;
+
+  // Should precompute sin/cos
+  float sinT, cosT;
+  __sincosf(theta, &sinT, &cosT);
+  
+  cuRotatePhase2(ant[iant*2][ichan+ifft*fftsize], sinT, cosT);
+  cuRotatePhase2(ant[iant*2+1][ichan+ifft*fftsize], sinT, cosT);
 }
 
 //__constant__ float levels_2bit[4];

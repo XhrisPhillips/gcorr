@@ -4,7 +4,8 @@ CUDA    = /Developer/NVIDIA/CUDA-8.0
 
 # CC must be able to generate dependencies with -MM option
 CC      = gcc -O3 -Wall -g
-NVCC	= nvcc -lineinfo -g -G 
+#NVCC	= nvcc -lineinfo -g -G 
+NVCC	= nvcc -lineinfo -O3
 
 EXECS = testgpukernel benchmark_gxkernel
 
