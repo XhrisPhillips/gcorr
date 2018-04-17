@@ -233,7 +233,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack2, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks2, arguments.nthreads>>>(unpackedData2[j], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpacked2[j], packedData[j]);
     }
     cudaEventRecord(end_test_unpack2, 0);
     cudaEventSynchronize(end_test_unpack2);
