@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpackedData;
-  int8_t **packedData, pb;
+  int8_t **packedData, pb, *randomData;
   float *dtime_unpack=NULL, averagetime_unpack = 0.0;
   float mintime_unpack = 0.0, maxtime_unpack = 0.0;
   cudaEvent_t start_test_unpack, end_test_unpack;
@@ -158,17 +158,20 @@ int main(int argc, char *argv[]) {
   
   cudaEventCreate(&start_test_unpack);
   cudaEventCreate(&end_test_unpack);
+  randomData = (int8_t*)malloc(packedBytes * sizeof(int8_t));
   for (i = 0; i < arguments.nloops; i++) {
     printf("\nLOOP %d\n", i);
     // Generate some random 2 bit data each loop.
     for (j = 0; j < arguments.nantennas; j++) {
       for (k = 0; k < packedBytes; k++) {
-	pb = rand() % 256;
+	//pb = rand() % 256;
+	randomData[k] = rand() % 256;
+      }
 	/*for (l = 0; l < 4; l++) {
 	  pb = pb | (rand() % 4) << (l * 2);
 	  }*/
-	gpuErrchk(cudaMemcpy(&packedData[j][k], &pb, (size_t)sizeof(int8_t), cudaMemcpyHostToDevice));
-      }
+      gpuErrchk(cudaMemcpy(&packedData[j], &randomData, (size_t)(packedBytes * sizeof(int8_t)), cudaMemcpyHostToDevice));
+      //}
     }
 
     // Now do the unpacking.
