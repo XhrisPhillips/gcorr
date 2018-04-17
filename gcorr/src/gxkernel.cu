@@ -116,6 +116,28 @@ __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src) {
   dest[subintsamples + j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
 }
 
+/* Unpack 2bit real data in complex float, assuming 2 interleave channels 
+   This is probably NOT suitable for the final system, just an initial place holder
+   Specifically I think delay compersation needs to be done here
+   Each thread unpacks 4 samples, 2 per channel (pol). Total number of threads should be
+  a factor of 2 smaller than numbwe of time samples (4 than total # samples).
+*/
+
+__global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant) {
+  // DO NOT USE THIS FUNCTION
+  static const float HiMag = 3.3359;  // Optimal value
+  const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
+  const int a = iant*2;
+  const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
+  int j = i*2;
+
+  dest[a][j] = make_cuFloatComplex(levels_2bit[src[i]&0x3], 0);
+  dest[a+1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>2)&0x3], 0);
+  j++;
+  dest[a][j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
+  dest[a+1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
+}
+
 
 
 

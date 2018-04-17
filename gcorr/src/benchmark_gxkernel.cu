@@ -204,7 +204,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
+      old_unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
     }
     cudaEventRecord(end_test_unpack, 0);
     cudaEventSynchronize(end_test_unpack);
@@ -217,8 +217,6 @@ int main(int argc, char *argv[]) {
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
   implied_time = (float)arguments.nsamples;
-  implied_time /= (float)npolarisations;
-  implied_time /= (float)arguments.nantennas;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
     implied_time /= (float)arguments.bandwidth;
