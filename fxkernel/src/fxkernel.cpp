@@ -295,7 +295,7 @@ void FxKernel::process()
       netdelaysamples_f = (meandelay - filestartoffsets[j]) / sampletime;
       netdelaysamples   = int(netdelaysamples_f + 0.5);
 
-      fractionaldelay = (netdelaysamples_f - netdelaysamples)*sampletime;  // seconds
+      fractionaldelay = -(netdelaysamples_f - netdelaysamples)*sampletime;  // seconds
       offset = i*fftchannels - netdelaysamples;
       if(offset == -1) // can happen due to changing geometric delay over the subint
       {
@@ -314,7 +314,7 @@ void FxKernel::process()
       }
       antValid[j] = true;
       unpack(inputdata[j], unpacked[j], offset);
-  
+
       // fringe rotate - after this function, each unpacked array has been fringe-rotated in-place
       fringerotate(unpacked[j], delaya, delayb);
 
@@ -325,6 +325,8 @@ void FxKernel::process()
     
       // Fractional sample correct
       fracSampleCorrect(channelised[j], fractionaldelay);
+
+      //std::cout << j << ", " << i << ", " << meandelay << ", " << delaya << ", " << delayb << ", " << netdelaysamples_f << ", " << fractionaldelay << std::endl;
 
       // Calculate complex conjugate once, for efficency
       conjChannels(channelised[j], conjchannels[j]);
@@ -365,7 +367,7 @@ void FxKernel::process()
   }
 }
 
-void FxKernel::saveVisibilities(const char * outfile) {
+void FxKernel::saveVisibilities(const char * outfile, int runtimeNS, std::string starttimestring) {
   f32 ***amp, ***phase;
 
   std::ofstream fvis(outfile);
@@ -385,9 +387,9 @@ void FxKernel::saveVisibilities(const char * outfile) {
 
   
   for (int c=0; c<numchannels; c++) {
-    fvis << std::setw(5) << c << " " << std::setw(11) << std::fixed << std::setprecision(6) << (c+0.5)/numchannels*bandwidth/1e6;
+    fvis << std::setw(5) << c << " " << std::setw(11) << std::fixed << std::setprecision(6) << (c+0.5)/numchannels*bandwidth/1e6 << " " << runtimeNS << " " << starttimestring;
     fvis  << std::setprecision(5);
-    for (int i=0; i<1; i++) {
+    for (int i=0; i<nbaselines; i++) {
       for (int j=0; j<4; j++) {
 	fvis << " " << std::setw(11) << visibilities[i][j][c].re << " " << std::setw(11) << visibilities[i][j][c].im;
 	fvis << " " << std::setw(11) << amp[i][j][c] << " " << std::setw(10) << phase[i][j][c];

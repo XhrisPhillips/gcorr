@@ -1,3 +1,4 @@
+#include <string>
 #include <ipps.h>
 #include <ippvm.h>
 #include <ippcore.h>
@@ -11,7 +12,7 @@ public:
   void setDelays(double ** d, double * f);
   void process();
   void accumulate(cf32 *** odata);
-  void saveVisibilities(const char * outfile);
+  void saveVisibilities(const char * outfile, int runtimens, std::string starttimestring);
 
 private:
   /* Method to unpack the coarsely quantised input data to complex floats */

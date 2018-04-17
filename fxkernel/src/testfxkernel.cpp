@@ -167,13 +167,19 @@ int main(int argc, char *argv[])
   fxkernel.setDelays(delays, antfileoffsets);
 
   // Checkpoint for timing
+  auto starttime = std::chrono::high_resolution_clock::now();
+  std::time_t time_now_t = std::chrono::system_clock::to_time_t(starttime);
+  string starttimestring = std::ctime(&time_now_t);
+  starttimestring.pop_back();
   
   // Run the processing
   fxkernel.process();
 
-  fxkernel.saveVisibilities("vis.out");
-
   // Calculate the elapsed time
+  auto diff = std::chrono::high_resolution_clock::now() - starttime;
+  auto t1 = std::chrono::duration_cast<std::chrono::nanoseconds>(diff);
+
+  fxkernel.saveVisibilities("vis.out", t1.count(), starttimestring);
 
   // Free memory
   for (i=0; i<numantennas; i++)

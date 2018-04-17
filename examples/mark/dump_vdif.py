@@ -13,6 +13,10 @@ def time2vex(secs):
     tupletime = time.gmtime(secs)
     return time.strftime("%Yy%jd%Hh%Mm%Ss", tupletime)
 
+if not len(sys.argv) == 5:
+    print "Usage: %s <inputfile> <outputfile> <starttimestring> <stoptimestring>" % sys.argv[0]
+    print "       format of time strings is vex style: e.g. 2011y245d10h20m30s"
+    sys.exit()
 os.environ['TZ'] = 'UTC'
 time.tzset()
 
@@ -52,6 +56,11 @@ while infp:
         pass
     buf = infp.read(length * 8 - header_size)
 
+    # Uncomment for any thread (needed if you have single thread data but it doesn't have threadid = 0)
+    #if t >= stop:
+    #    break
+    #if t >= start:
+    # Comment the following 3 lines out to allow any thread (needed if you have single thread data but it doesn't have threadid = 0)
     if thread_id == 0 and t >= stop:
         break
     if thread_id == 0 and t >= start:
