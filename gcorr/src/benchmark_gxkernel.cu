@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
    * This benchmarks unpacker kernels.
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
-  cuComplex **unpacked2 = new cuComplex*[arguments.nantennas];
+  cuComplex *unpacked2 = new cuComplex[arguments.nantennas * npolarisations * arguments.nsamples];
   cuComplex **unpackedData;
   int8_t **packedData;
   float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
@@ -182,9 +182,9 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
 
-  for (i = 0; i < arguments.nantennas; i++) {
+  /*for (i = 0; i < arguments.nantennas; i++) {
     gpuErrchk(cudaMalloc(&unpacked2[i], arguments.nsamples * npolarisations * sizeof(cuComplex)));
-  }
+    }*/
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
   printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
@@ -230,7 +230,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack2, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpacked2[j], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpacked2[2*j*arguments.nsamples], packedData[j]);
     }
     cudaEventRecord(end_test_unpack2, 0);
     cudaEventSynchronize(end_test_unpack2);
@@ -278,17 +278,16 @@ int main(int argc, char *argv[]) {
   /*
    * This benchmarks the performance of the fringe rotator kernel.
    */
-  cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
+  cuComplex *unpackedFR = new cuComplex*[arguments.nantennas * npolarisations * arguments.nsamples];
   int i, j, k;
-  unsigned long long GPUalloc = 0;
   float *dtime_addcomplex=NULL, averagetime_addcomplex = 0.0;
   float mintime_addcomplex = 0.0, maxtime_addcomplex = 0.0;
   cudaEvent_t start_test_addcomplex, end_test_addcomplex;
   dtime_addcomplex = (float *)malloc(arguments.nloops * sizeof(float));
+
   // Prepare the large arrays.
   for (i = 0; i < arguments.nantennas * npolarisations; i++) {
     gpuErrchk(cudaMalloc(&unpacked[i], arguments.nchannels * sizeof(cuComplex)));
-    GPUalloc += arguments.nchannels * sizeof(cuComplex);
   }
   for (i = 0; i < arguments.nloops; i++) {
     // Set the complex number values.
