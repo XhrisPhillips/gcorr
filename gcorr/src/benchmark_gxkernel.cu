@@ -180,8 +180,8 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(end_test_unpack, 0);
     cudaEventSynchronize(end_test_unpack);
-    printf("  done.\n");
     cudaEventElapsedTime(&(dtime_unpack[i]), start_test_unpack, end_test_unpack);
+    printf("  done in %8.3f ms.\n", dtime_unpack[i]);
     postLaunchCheck();
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
