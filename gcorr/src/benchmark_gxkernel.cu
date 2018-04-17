@@ -163,10 +163,10 @@ int main(int argc, char *argv[]) {
     // Generate some random 2 bit data each loop.
     for (j = 0; j < arguments.nantennas; j++) {
       for (k = 0; k < packedBytes; k++) {
-	pb = 0;
-	for (l = 0; l < 4; l++) {
+	pb = rand() % 256;
+	/*for (l = 0; l < 4; l++) {
 	  pb = pb | (rand() % 4) << (l * 2);
-	}
+	  }*/
 	gpuErrchk(cudaMemcpy(&packedData[j][k], &pb, (size_t)sizeof(int8_t), cudaMemcpyHostToDevice));
       }
     }
