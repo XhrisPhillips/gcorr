@@ -10,8 +10,6 @@
 #include <complex>
 #include <argp.h>
 
-//#include <chrono>  // for high_resolution_clock
-
 #include <cuComplex.h>
 #include <cufft.h>
 
@@ -74,51 +72,38 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 #include "gxkernel.h"
 
-void allocDataGPU(int8_t ***packedData, cuComplex ***unpackedData, cuComplex ***unpackedData_h,
-		  cuComplex ***channelisedData, cuComplex ***channelisedData_h, cuComplex ***baselineData, cuComplex ***baselineData_h,
-		  int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int parallelAccum) {
+void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
+		  cuComplex **channelisedData, cuComplex **baselineData, 
+		  float **rotVec, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum) {
   
   unsigned long long GPUalloc = 0;
 
   int packedBytes = subintsamples*nbit*nPol/8;
   *packedData = new int8_t*[numantenna];
+  
   for (int i=0; i<numantenna; i++) {
     gpuErrchk(cudaMalloc(&(*packedData)[i], packedBytes));
     GPUalloc += packedBytes;
   }
 
   // Unpacked data
-  cuComplex **unpacked = new cuComplex*[numantenna*nPol];
-  for (int i=0; i<numantenna*nPol; i++) {
-    gpuErrchk(cudaMalloc(&unpacked[i], subintsamples*sizeof(cuComplex)));
-    GPUalloc += subintsamples*sizeof(cuComplex);
-  }
-  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*sizeof(cuComplex*)));
-  gpuErrchk(cudaMemcpy(*unpackedData, unpacked, numantenna*nPol*sizeof(cuComplex*), cudaMemcpyHostToDevice));
-  *unpackedData_h = unpacked;
+  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*subintsamples*sizeof(cuComplex)));
+  GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
   
   // FFT output
-  cuComplex **channelised = new cuComplex*[numantenna*nPol];
-  for (int i=0; i<numantenna*nPol; i++) {
-    gpuErrchk(cudaMalloc(&channelised[i], subintsamples*sizeof(cuComplex)));
-    GPUalloc += subintsamples*sizeof(cuComplex);
-  }
-  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*sizeof(cuComplex*)));
-  gpuErrchk(cudaMemcpy(*channelisedData, channelised, numantenna*nPol*sizeof(cuComplex*), cudaMemcpyHostToDevice));
-  *channelisedData_h = channelised;
+  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*subintsamples*sizeof(cuComplex)));
+  GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
 
   // Baseline visibilities
   int nbaseline = numantenna*(numantenna-1)/2;
   if (!iscomplex) subintsamples /= 2;
-  cuComplex **baseline_h = new cuComplex*[nbaseline*4*sizeof(cuComplex*)];
   cout << "Alloc " << nchan*parallelAccum << " complex output values per baseline" << endl;
-  for (int i=0; i<nbaseline*4; i++) {
-    gpuErrchk(cudaMalloc(&baseline_h[i], nchan*parallelAccum*sizeof(cuComplex)));
-    GPUalloc += nchan*parallelAccum*sizeof(cuComplex);
-  }
-  gpuErrchk(cudaMalloc(baselineData, nbaseline*4*sizeof(cuComplex*)));
-  gpuErrchk(cudaMemcpy((*baselineData), baseline_h, nbaseline*4*sizeof(cuComplex*), cudaMemcpyHostToDevice));
-  *baselineData_h = baseline_h;
+  gpuErrchk(cudaMalloc(baselineData, nbaseline*4*nchan*parallelAccum*sizeof(cuComplex)));
+  GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
+
+  // Fringe rotation vector
+  gpuErrchk(cudaMalloc(rotVec, numantenna*2*numffts*2*sizeof(float)));
+  GPUalloc += numantenna*2*numffts*2*sizeof(float);
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
@@ -205,7 +190,7 @@ int readdata(int bytestoread, vector<std::ifstream*> &antStream, uint8_t **input
 
 inline float carg(const cuComplex& z) {return atan2(cuCimagf(z), cuCrealf(z));} // polar angle
 
-void saveVisibilities(const char * outfile, cuComplex **baselines, int nbaseline, int nchan, double bandwidth) {
+void saveVisibilities(const char *outfile, cuComplex *baselines, int nbaseline, int nchan, int parallelAccum, double bandwidth) {
   cuComplex **vis;
   std::ofstream fvis(outfile);
 
@@ -213,13 +198,13 @@ void saveVisibilities(const char * outfile, cuComplex **baselines, int nbaseline
   vis = new cuComplex*[nbaseline*4];
   for (int i=0; i<nbaseline*4; i++) {
     vis[i] = new cuComplex[nchan];
-    gpuErrchk(cudaMemcpy(vis[i], baselines[i], nchan*sizeof(cuComplex), cudaMemcpyDeviceToHost));
+    gpuErrchk(cudaMemcpy(vis[i], &baselines[i*nchan*parallelAccum], nchan*sizeof(cuComplex), cudaMemcpyDeviceToHost));
   }
   
   for (int c=0; c<nchan; c++) {
     fvis << std::setw(5) << c << " " << std::setw(11) << std::fixed << std::setprecision(6) << (c+0.5)/nchan*bandwidth/1e6;
     fvis  << std::setprecision(5);
-    for (int i=0; i<2*4; i++) {
+    for (int i=0; i<nbaseline*4; i++) {
       fvis << " " << std::setw(11) << vis[i][c].x << " " << std::setw(11) << vis[i][c].y;
       fvis << " " << std::setw(11) << cuCabsf(vis[i][c]) << " " << std::setw(11) << carg(vis[i][c]);
     }
@@ -247,13 +232,10 @@ int main(int argc, char *argv[])
   vector<std::ifstream *> antStream;
 
   int8_t **packedData;
-  cuComplex **unpackedData, **unpackedData_h, **channelisedData, **channelisedData_h, **baselineData, **baselineData_h;
+  float *rotVec;
+  cuComplex *unpackedData, *channelisedData, *baselineData;
   cufftHandle plan;
   
-  //if (argc!=2) {
-  //  cout << "Usage:  testfxkernel <config>\n" << endl;
-  //  exit(1);
-  //}
   // Read in the command line arguments.
   struct arguments arguments;
   arguments.nloops = 1;
@@ -319,22 +301,25 @@ int main(int argc, char *argv[])
 
   // Final Cross Corr accumulation
   dim3 accumBlocks = dim3(blockchan, 4, nbaseline);
+
+  // Fringe Rotation
+  dim3 fringeBlocks = dim3(blockchan, numffts, numantennas);
   
   cout << "Allocate Memory" << endl;
   // Allocate space in the buffers for the data and the delays
   allocDataHost(&inputdata, numantennas, subintsamples, nbit, nPol, iscomplex, subintbytes);
 
   // Allocate space on the GPU
-  allocDataGPU(&packedData, &unpackedData, &unpackedData_h, &channelisedData, &channelisedData_h,
-	       &baselineData, &baselineData_h, numantennas, subintsamples,
-	       nbit, nPol, iscomplex, numchannels, parallelAccum);
+  allocDataGPU(&packedData, &unpackedData, &channelisedData,
+	       &baselineData, &rotVec, numantennas, subintsamples,
+	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum);
 
   for (int i=0; i<numantennas; i++) {
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
   }
 
   // Configure CUFFT
-  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, numffts) != CUFFT_SUCCESS) {
+  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, 2*numantennas*numffts) != CUFFT_SUCCESS) {
     cout << "CUFFT error: Plan creation failed" << endl;
     return(0);
   }
@@ -349,40 +334,48 @@ int main(int argc, char *argv[])
     gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
   }
 
-  // Set the delays //
-
-  // Unpack the data
-  cout << "Unpack data" << endl;
-  for (int i=0; i<numantennas; i++) {
-    unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(unpackedData, packedData[i], i);
-    CudaCheckError();
-  }
-
-  // Fringe Rotate //
+  for (int l=0; l<arguments.nloops; l++) {
   
-  // FFT
-  cout << "FFT data" << endl;
-  for (int i=0; i<numantennas*2; i++) {
-    if (cufftExecC2C(plan, unpackedData_h[i], channelisedData_h[i], CUFFT_FORWARD) != CUFFT_SUCCESS) {
+    // Set the delays //
+
+    // Unpack the data
+    cout << "Unpack data" << endl;
+    for (int i=0; i<numantennas; i++) {
+      unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+      CudaCheckError();
+    }
+
+    // Fringe Rotate //
+    cout << "Fringe Rotate" << endl;
+    if (numffts%8) {
+      cerr << "Error: numffts must be divisible by 8" << endl;
+    }
+    dim3 FringeSetblocks = dim3(8, numantennas);
+    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    CudaCheckError();
+
+    FringeRotate<<<fringeBlocks,unpackThreads>>>(unpackedData, rotVec);
+    CudaCheckError();
+  
+    // FFT
+    cout << "FFT data" << endl;
+    if (cufftExecC2C(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
       cout << "CUFFT error: ExecC2C Forward failed" << endl;
       return(0);
     }
-  }
 
-  // Cross correlate
-  for (int i=0; i<nbaseline*4; i++) {
-    gpuErrchk(cudaMemset(baselineData_h[i], 0, numchannels*parallelAccum*sizeof(cuComplex)));
-  }
-  cout << "Cross correlate" << endl;
-  CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-  //CrossCorrShared<<<blocks,threads>>>(antData, baseline, nant, nchunk);
-  CudaCheckError();
-  
-  finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
-  CudaCheckError();
+    // Cross correlate
+    gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
+    cout << "Cross correlate" << endl;
+    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    //CrossCorrShared<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    CudaCheckError();
+    
+    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum, nchunk);
+    CudaCheckError();
 
-  
-  saveVisibilities("vis.out", baselineData_h, nbaseline, numchannels, bandwidth);
+  }
+  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, parallelAccum, bandwidth);
 
   cudaDeviceSynchronize();
   cudaDeviceReset();

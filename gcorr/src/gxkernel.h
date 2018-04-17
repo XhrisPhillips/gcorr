@@ -4,6 +4,21 @@
 
 #include <stdio.h>
 
+__host__ __device__ static __inline__ int
+antIdx(int antenna, int pol, int channel, int stride)
+{
+  const int num_pols = 2;
+
+  return (antenna * num_pols + pol) * stride + channel;
+}
+
+__host__ __device__ static __inline__ int
+accumIdx(int baseline, int product, int channel, int stride)
+{
+  const int num_products = 4;
+
+  return (baseline * num_products + product) * stride + channel;
+}
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -29,10 +44,13 @@ inline void __cudaCheckError( const char *file, const int line ) {
 void freeMem();
 
 void init_2bitLevels();
-__global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src, int iant);
-__global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nchunk);
-__global__ void CrossCorrShared(cuComplex **ants, cuComplex **accum, int nant, int nchunk);
-__global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk);
+__global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src);
+__global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant);
+__global__ void setFringeRotation(float *rotVec);
+__global__ void FringeRotate(cuComplex *ant, float *rotVec);
+__global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
+__global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk);
 __global__ void printArray(cuComplex *a);
 __global__ void printArrayInt(int8_t *a);
 

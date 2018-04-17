@@ -4,17 +4,18 @@ CUDA    = /Developer/NVIDIA/CUDA-8.0
 
 # CC must be able to generate dependencies with -MM option
 CC      = gcc -O3 -Wall -g
-NVCC	= nvcc -lineinfo 
+NVCC	= nvcc 
+NVDEBUG = -lineinfo -g -G
 
-EXECS = testgpukernel
+EXECS = testgpukernel benchmark_gxkernel
 
-SOURCES	= gxkernel.cu testgpukernel.cu
+SOURCES	= gxkernel.cu testgpukernel.cu benchmark_gxkernel.cu
 
 OBJECTS = $(SOURCES:.cu=.o)
 
 CUFLAGS	=
 
-CLINK	= -lcudart -lcufft
+CLINK	= -lcudart -lcufft -lcurand
 
 %.o : %.cu
 	$(NVCC) $(CUFLAGS) -c $<
@@ -26,6 +27,9 @@ CLINK	= -lcudart -lcufft
 all: $(EXECS)
 
 testgpukernel : gxkernel.cu testgpukernel.cu
+	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
+
+benchmark_gxkernel : gxkernel.cu benchmark_gxkernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
 
 clean:
