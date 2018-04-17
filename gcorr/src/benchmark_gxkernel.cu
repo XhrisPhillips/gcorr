@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
 
   // Allocate the memory.
   int packedBytes = arguments.nchannels * 2 * npolarisations / 8;
-  *packedData = new int8_t*[arguments.nantennas];
+  packedData = new int8_t*[arguments.nantennas];
   for (i = 0; i < arguments.nantennas; i++) {
     gpuErrchk(cudaMalloc(&packedData[i], packedBytes));
   }
@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_unpack, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>(unpackedData, packedData[j], j);
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
     }
     cudaEventRecord(stop_test_unpack, 0);
     cudaEventSynchronize(stop_test_unpack);
