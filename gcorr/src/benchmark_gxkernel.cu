@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
 	for (l = 0; l < 4; l++) {
 	  pb = pb | (rand() % 4) << (l * 2);
 	}
-	packedData[j][k] = pb;
+	gpuErrchk(cudaMemcpy(&packedData[j][k], &pb, (size_t)sizeof(int8_t), cudaMemcpyHostToDevice));
       }
     }
 
