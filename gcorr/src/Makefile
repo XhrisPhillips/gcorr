@@ -6,9 +6,9 @@ CUDA    = /Developer/NVIDIA/CUDA-8.0
 CC      = gcc -O3 -Wall -g
 NVCC	= nvcc -lineinfo 
 
-EXECS = testgpukernel
+EXECS = testgpukernel benchmark_gxkernel
 
-SOURCES	= gxkernel.cu testgpukernel.cu
+SOURCES	= gxkernel.cu testgpukernel.cu benchmark_gxkernel.cu
 
 OBJECTS = $(SOURCES:.cu=.o)
 
@@ -26,6 +26,9 @@ CLINK	= -lcudart -lcufft
 all: $(EXECS)
 
 testgpukernel : gxkernel.cu testgpukernel.cu
+	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
+
+benchmark_gxkernel : gxkernel.cu benchmark_gxkernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
 
 clean:
