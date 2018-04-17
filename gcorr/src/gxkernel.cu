@@ -62,18 +62,19 @@ void freeMem() {
 
 
 /* Set fringe rotation vectors - dummy routine for now */
-__global__ void setFringeRotation(float **rotVec) {
+__global__ void setFringeRotation(float *rotVec) {
   size_t ifft = threadIdx.x + blockIdx.x * blockDim.x;
   size_t iant = blockIdx.y;
+  int numffts = blockDim.x * gridDim.x;
 
-  rotVec[iant][ifft*2] = 1e-6;
-  rotVec[iant][ifft*2+1] = 1e-12;
+  rotVec[iant*numffts*2 + ifft*2] = 1e-6;
+  rotVec[iant*numffts*2 + ifft*2+1] = 1e-12;
 }
 
 
 /* Fringe rotate a single antenna inplace, assuming dual pol data */
 
-__global__ void FringeRotate(cuComplex **ant, float **rotVec) {
+__global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   // ant[0] pointer to pol A
   // ant[1] pointer to pol B
   // rotVec is an array of 2 values - initial phase and phase step per sample 
@@ -82,15 +83,17 @@ __global__ void FringeRotate(cuComplex **ant, float **rotVec) {
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
   size_t iant = blockIdx.z;
+  int numffts = blockDim.y * gridDim.y;
+  int subintsamples = numffts * fftsize * 2;
 
   // phase and slope for this FFT
-  float p0 = rotVec[iant][ifft*2];
-  float p1 = rotVec[iant][ifft*2+1];
+  float p0 = rotVec[iant*numffts*2 + ifft*2];
+  float p1 = rotVec[iant*numffts*2 + ifft*2+1];
   float theta = p0 + ichan*p1;
 
   // Should precompute sin/cos
-  cuRotatePhase(&ant[iant*2][ichan+ifft*fftsize], theta);
-  cuRotatePhase(&ant[iant*2+1][ichan+ifft*fftsize], theta);
+  cuRotatePhase(&ant[iant*2*subintsamples + ichan+ifft*fftsize], theta);
+  cuRotatePhase(&ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], theta);
 }
 
 __global__ void FringeRotate2(cuComplex **ant, float **rotVec) {
@@ -133,7 +136,29 @@ void init_2bitLevels() {
   a factor of 2 smaller than numbwe of time samples (4 than total # samples).
 */
 
-__global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant) {
+__global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src) {
+  static const float HiMag = 3.3359;  // Optimal value
+  const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
+  const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
+  int subintsamples = 2 * blockDim.x * gridDim.x;
+  int j = i*2;
+
+  dest[j] = make_cuFloatComplex(levels_2bit[src[i]&0x3], 0);
+  dest[subintsamples + j] = make_cuFloatComplex(levels_2bit[(src[i]>>2)&0x3], 0);
+  j++;
+  dest[j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
+  dest[subintsamples + j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
+}
+
+/* Unpack 2bit real data in complex float, assuming 2 interleave channels 
+   This is probably NOT suitable for the final system, just an initial place holder
+   Specifically I think delay compersation needs to be done here
+   Each thread unpacks 4 samples, 2 per channel (pol). Total number of threads should be
+  a factor of 2 smaller than numbwe of time samples (4 than total # samples).
+*/
+
+__global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant) {
+  // DO NOT USE THIS FUNCTION
   static const float HiMag = 3.3359;  // Optimal value
   const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
   const int a = iant*2;
@@ -159,53 +184,65 @@ __global__ void unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int 
 */
 
 
-__global__ void CrossCorr(cuComplex **ants, cuComplex **accum, int nant, int nchunk) { 
+__global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk) { 
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
   int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
+  int parallelAccum = blockDim.y * gridDim.y;
+  int subintsamples = parallelAccum * nchan * nchunk * 2;
 
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2][ichan], ants[j*2][ichan]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2][ichan], ants[j*2+1][ichan]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2+1][ichan], ants[j*2][ichan]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(ants[i*2+1][ichan], ants[j*2+1][ichan]));
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[i*2*subintsamples + ichan], ants[j*2*subintsamples + ichan]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[i*2*subintsamples + ichan], ants[(j*2+1)*subintsamples + ichan]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[(i*2+1)*subintsamples + ichan], ants[j*2*subintsamples + ichan]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(ants[(i*2+1)*subintsamples + ichan], ants[(j*2+1)*subintsamples + ichan]));
+	b++;
       }
     }
     ichan += nchan*2;
   }
 }
 
-__global__ void CrossCorrShared(cuComplex **ants, cuComplex **accum, int nant, int nchunk) { 
+__global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk) { 
 
   extern __shared__ cuComplex antShar[];
   
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
   const size_t ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
+  int parallelAccum = blockDim.y * gridDim.y;
+  int subintsamples = parallelAccum * nchan * nchunk * 2;
 
   int i,j, l, b;
   for (l=0; l<nchunk; l++) {
-    if (threadIdx.x<nant*2) antShar[threadIdx.x] = ants[threadIdx.x][ichan];
+    if (threadIdx.x<nant*2) antShar[threadIdx.x] = ants[threadIdx.x*subintsamples + ichan];
     __syncthreads();
     
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2], antShar[j*2]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
-	cuCaddIf(&accum[b++][ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2], antShar[j*2]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
+	b++;
+	cuCaddIf(&accum[b*nchan*parallelAccum + ochan], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
+	b++;
       }
     }
     ichan += nchan*2;
   }
 }
 
-__global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) { 
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) { 
 
   int nchan = blockDim.x * gridDim.x;
 
@@ -213,9 +250,9 @@ __global__ void finaliseAccum(cuComplex **accum, int nant, int nchunk) {
   int b = blockIdx.y+blockIdx.z*4;
   
   for (int i=1; i<nchunk; i++) {
-    cuCaddIf(&accum[b][ichan], accum[b][ichan + i*nchan]);
+    cuCaddIf(&accum[b*nchan*parallelAccum + ichan], accum[b*nchan*parallelAccum + ichan + i*nchan]);
   }
-  cuCdivCf(&accum[b][ichan], nchunk);
+  cuCdivCf(&accum[b*nchan*parallelAccum + ichan], nchunk);
 }
 
 __global__ void printArray(cuComplex *a) {

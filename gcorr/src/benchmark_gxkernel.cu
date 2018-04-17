@@ -5,6 +5,8 @@
 #include <complex.h>
 #include <cuComplex.h>
 #include <npp.h>
+#include <cuda.h>
+#include <curand.h>
 #include "gxkernel.h"
 
 /*
@@ -46,6 +48,10 @@ static struct argp_option options[] = {
   { "antennas", 'a', "NANTENNAS", 0, "assume NANTENNAS antennas when required" },
   { "channels", 'c', "NCHANNELS", 0, "assume NCHANNELS frequency channels when required" },
   { "samples", 's', "NSAMPLES", 0, "assume NSAMPLES when unpacking" },
+  { "bandwidth", 'b', "BANDWIDTH", 0, "the bandwidth in Hz" },
+  { "verbose", 'v', 0, 0, "output more" },
+  { "bits", 'B', "NBITS", 0, "number of bits assumed in the data" },
+  { "complex", 'I', 0, 0, "the data input is complex sampled" },
   { 0 }
 };
 
@@ -55,6 +61,10 @@ struct arguments {
   int nantennas;
   int nchannels;
   int nsamples;
+  int bandwidth;
+  int verbose;
+  int nbits;
+  int complexdata;
 };
 
 /* The option parser */
@@ -76,6 +86,18 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     break;
   case 's':
     arguments->nsamples = atoi(arg);
+    break;
+  case 'b':
+    arguments->bandwidth = atoi(arg);
+    break;
+  case 'v':
+    arguments->verbose = 1;
+    break;
+  case 'B':
+    arguments->nbits = atoi(arg);
+    break;
+  case 'C':
+    arguments->complexdata = 1;
     break;
   }
   return 0;
@@ -107,7 +129,6 @@ void time_stats(float *timearray, int ntime, float *average, float *min, float *
 #define NOFRINGEROTATE
 
 int main(int argc, char *argv[]) {
-  cudaError_t status;
   
   /* Default argument values first. */
   struct arguments arguments;
@@ -115,7 +136,11 @@ int main(int argc, char *argv[]) {
   arguments.nthreads = 512;
   arguments.nantennas = 6;
   arguments.nchannels = 2048;
-  arguments.nsamples = 16384;
+  arguments.nsamples = 1<<23;
+  arguments.bandwidth = 64e6;
+  arguments.verbose = 0;
+  arguments.nbits = 2;
+  arguments.complexdata = 0;
   int npolarisations = 2;
   
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
@@ -130,13 +155,19 @@ int main(int argc, char *argv[]) {
    * This benchmarks unpacker kernels.
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
-  cuComplex **unpackedData;
-  int8_t **packedData, pb, *randomData;
-  float *dtime_unpack=NULL, averagetime_unpack = 0.0;
-  float mintime_unpack = 0.0, maxtime_unpack = 0.0;
+  cuComplex **unpacked2 = new cuComplex*[arguments.nantennas];
+  cuComplex **unpackedData, **unpackedData2;
+  int8_t **packedData;
+  float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
+  float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
+  float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
+  float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
+  cudaEvent_t start_test_unpack2, end_test_unpack2;
+  curandGenerator_t gen;
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
-  int i, j, k, l, unpackBlocks;
+  dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
+  int i, j, unpackBlocks, unpackBlocks2;
 
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
@@ -151,53 +182,95 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
 
+  for (i = 0; i < arguments.nantennas; i++) {
+    gpuErrchk(cudaMalloc(&unpacked2[i], arguments.nsamples * npolarisations * sizeof(cuComplex)));
+  }
+  gpuErrchk(cudaMalloc(&unpackedData2, arguments.nantennas * sizeof(cuComplex*)));
+  gpuErrchk(cudaMemcpy(unpackedData2, unpacked2, arguments.nantennas * sizeof(cuComplex*), cudaMemcpyHostToDevice));
+  
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
+  unpackBlocks2 = arguments.nsamples / arguments.nthreads;
   printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
   
   cudaEventCreate(&start_test_unpack);
   cudaEventCreate(&end_test_unpack);
-  randomData = (int8_t*)malloc(packedBytes * sizeof(int8_t));
+  cudaEventCreate(&start_test_unpack2);
+  cudaEventCreate(&end_test_unpack2);
+  // Generate some random data.
+  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
+  for (i = 0; i < arguments.nantennas; i++) {
+    curandGenerateUniform(gen, (float*)packedData[i], packedBytes * (sizeof(int8_t) / sizeof(float)));
+  }
+  curandDestroyGenerator(gen);
   for (i = 0; i < arguments.nloops; i++) {
-    printf("\nLOOP %d\n", i);
-    // Generate some random 2 bit data each loop.
-    for (j = 0; j < arguments.nantennas; j++) {
-      for (k = 0; k < packedBytes; k++) {
-	//pb = rand() % 256;
-	randomData[k] = rand() % 256;
-      }
-	/*for (l = 0; l < 4; l++) {
-	  pb = pb | (rand() % 4) << (l * 2);
-	  }*/
-      gpuErrchk(cudaMemcpy(&packedData[j], &randomData, (size_t)(packedBytes * sizeof(int8_t)), cudaMemcpyHostToDevice));
-      //}
+    if (arguments.verbose) {
+      printf("\nLOOP %d\n", i);
     }
 
     // Now do the unpacking.
     preLaunchCheck();
-    printf("  RUNNING KERNEL... ");
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL... ");
+    }
     cudaEventRecord(start_test_unpack, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
+      old_unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
     }
     cudaEventRecord(end_test_unpack, 0);
     cudaEventSynchronize(end_test_unpack);
     cudaEventElapsedTime(&(dtime_unpack[i]), start_test_unpack, end_test_unpack);
-    printf("  done in %8.3f ms.\n", dtime_unpack[i]);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_unpack[i]);
+    }
+    postLaunchCheck();
+
+    preLaunchCheck();
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL 2... ");
+    }
+    cudaEventRecord(start_test_unpack2, 0);
+    for (j = 0; j < arguments.nantennas; j++) {
+      unpack2bit_2chan<<<unpackBlocks2, arguments.nthreads>>>(unpackedData2[j], packedData[j]);
+    }
+    cudaEventRecord(end_test_unpack2, 0);
+    cudaEventSynchronize(end_test_unpack2);
+    cudaEventElapsedTime(&(dtime_unpack2[i]), start_test_unpack2, end_test_unpack2);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_unpack2[i]);
+    }
     postLaunchCheck();
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
+  implied_time = (float)arguments.nsamples;
+  if (arguments.complexdata) {
+    // Bandwidth is the same as the sampling rate.
+    implied_time /= (float)arguments.bandwidth;
+    // But the data is twice as big.
+    implied_time /= 2;
+  } else {
+    implied_time /= 2 * (float)arguments.bandwidth;
+  }
+  printf("\n==== ROUTINE: old_unpack2bit_2chan ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+	 averagetime_unpack, mintime_unpack, maxtime_unpack, implied_time,
+	 ((implied_time * 1e3) / averagetime_unpack));
   printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms |\n", (arguments.nloops - 1),
-	 averagetime_unpack, mintime_unpack, maxtime_unpack);
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+	 averagetime_unpack2, mintime_unpack2, maxtime_unpack2, implied_time,
+	 ((implied_time * 1e3) / averagetime_unpack2));
   
   
   // Clean up.
   cudaEventDestroy(start_test_unpack);
   cudaEventDestroy(end_test_unpack);
+  cudaEventDestroy(start_test_unpack2);
+  cudaEventDestroy(end_test_unpack2);
 
 #endif
   
