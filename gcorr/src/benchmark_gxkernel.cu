@@ -155,14 +155,18 @@ int main(int argc, char *argv[]) {
    * This benchmarks unpacker kernels.
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
+  cuComplex **unpacked2 = new cuComplex*[arguments.nantennas];
   cuComplex **unpackedData;
   int8_t **packedData;
-  float *dtime_unpack=NULL, averagetime_unpack = 0.0;
-  float mintime_unpack = 0.0, maxtime_unpack = 0.0;
+  float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
+  float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
+  float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
   float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
+  cudaEvent_t start_test_unpack2, end_test_unpack2;
   curandGenerator_t gen;
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
   int i, j, unpackBlocks;
 
   // Allocate the memory.
@@ -178,6 +182,10 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
 
+  for (i = 0; i < arguments.nantennas; i++) {
+    gpuErrchk(cudaMalloc(&unpacked2[i], arguments.nsamples * npolarisations * sizeof(cuComplex)));
+  }
+  
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
   printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
   printf("  nsamples = %d\n", arguments.nsamples);
@@ -185,6 +193,8 @@ int main(int argc, char *argv[]) {
   
   cudaEventCreate(&start_test_unpack);
   cudaEventCreate(&end_test_unpack);
+  cudaEventCreate(&start_test_unpack2);
+  cudaEventCreate(&end_test_unpack2);
   // Generate some random data.
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
@@ -213,9 +223,27 @@ int main(int argc, char *argv[]) {
       printf("  done in %8.3f ms.\n", dtime_unpack[i]);
     }
     postLaunchCheck();
+
+    preLaunchCheck();
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL 2... ");
+    }
+    cudaEventRecord(start_test_unpack2, 0);
+    for (j = 0; j < arguments.nantennas; j++) {
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpacked2[j], packedData[j]);
+    }
+    cudaEventRecord(end_test_unpack2, 0);
+    cudaEventSynchronize(end_test_unpack2);
+    cudaEventElapsedTime(&(dtime_unpack2[i]), start_test_unpack2, end_test_unpack2);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_unpack2[i]);
+    }
+    postLaunchCheck();
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
+  (void)time_stats(dtime_unpack2, arguments.nloops, &averagetime_unpack2,
+		   &mintime_unpack2, &maxtime_unpack2);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -225,21 +253,23 @@ int main(int argc, char *argv[]) {
   } else {
     implied_time /= 2 * (float)arguments.bandwidth;
   }
-  /*/ float(npolarisations * arguments.nantennas *
-						   ((arguments.complexdata) ? 2 : 1) *
-						   arguments.nbits *
-						   ((arguments.complexdata) ? arguments.bandwidth :
-						   (2 * arguments.bandwidth))); */
-  printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up |\n");
+  printf("\n==== ROUTINE: old_unpack2bit_2chan ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
 	 averagetime_unpack, mintime_unpack, maxtime_unpack, implied_time,
 	 ((implied_time * 1e3) / averagetime_unpack));
+  printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+	 averagetime_unpack2, mintime_unpack2, maxtime_unpack2, implied_time,
+	 ((implied_time * 1e3) / averagetime_unpack2));
   
   
   // Clean up.
   cudaEventDestroy(start_test_unpack);
   cudaEventDestroy(end_test_unpack);
+  cudaEventDestroy(start_test_unpack2);
+  cudaEventDestroy(end_test_unpack2);
 
 #endif
   

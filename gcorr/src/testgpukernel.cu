@@ -74,7 +74,7 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
 		  cuComplex **channelisedData, cuComplex **baselineData, 
-		  float ***rotVec, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum) {
+		  float **rotVec, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum) {
   
   unsigned long long GPUalloc = 0;
 
@@ -101,14 +101,9 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
   gpuErrchk(cudaMalloc(baselineData, nbaseline*4*nchan*parallelAccum*sizeof(cuComplex)));
   GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
 
-  // Fringe rotation vectors
-  float **rv = new float*[numantenna*sizeof(float)];
-  for (int i=0; i<numantenna; i++) {
-    gpuErrchk(cudaMalloc(&rv[i], numffts*2*sizeof(float)));
-    GPUalloc += numffts*2*sizeof(float);
-  }
-  gpuErrchk(cudaMalloc(rotVec, numantenna*2*sizeof(float*)));
-  gpuErrchk(cudaMemcpy(*rotVec, rv, numantenna*2*sizeof(float*), cudaMemcpyHostToDevice));
+  // Fringe rotation vector
+  gpuErrchk(cudaMalloc(rotVec, numantenna*2*numffts*2*sizeof(float)));
+  GPUalloc += numantenna*2*numffts*2*sizeof(float);
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
@@ -237,7 +232,7 @@ int main(int argc, char *argv[])
   vector<std::ifstream *> antStream;
 
   int8_t **packedData;
-  float **rotVec;
+  float *rotVec;
   cuComplex *unpackedData, *channelisedData, *baselineData;
   cufftHandle plan;
   
