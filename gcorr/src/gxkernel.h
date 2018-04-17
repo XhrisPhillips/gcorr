@@ -4,6 +4,21 @@
 
 #include <stdio.h>
 
+__host__ __device__ static __inline__ int
+antIdx(int antenna, int pol, int channel, int stride)
+{
+  const int num_pols = 2;
+
+  return (antenna * num_pols + pol) * stride + channel;
+}
+
+__host__ __device__ static __inline__ int
+accumIdx(int baseline, int product, int channel, int stride)
+{
+  const int num_products = 4;
+
+  return (baseline * num_products + product) * stride + channel;
+}
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)

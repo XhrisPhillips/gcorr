@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpacked2 = new cuComplex*[arguments.nantennas];
-  cuComplex **unpackedData, **unpackedData2;
+  cuComplex **unpackedData;
   int8_t **packedData;
   float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
   curandGenerator_t gen;
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
-  int i, j, unpackBlocks, unpackBlocks2;
+  int i, j, unpackBlocks;
 
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
@@ -185,11 +185,8 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < arguments.nantennas; i++) {
     gpuErrchk(cudaMalloc(&unpacked2[i], arguments.nsamples * npolarisations * sizeof(cuComplex)));
   }
-  gpuErrchk(cudaMalloc(&unpackedData2, arguments.nantennas * sizeof(cuComplex*)));
-  gpuErrchk(cudaMemcpy(unpackedData2, unpacked2, arguments.nantennas * sizeof(cuComplex*), cudaMemcpyHostToDevice));
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
-  unpackBlocks2 = arguments.nsamples / arguments.nthreads;
   printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
@@ -233,7 +230,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack2, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks2, arguments.nthreads>>>(unpackedData2[j], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpacked2[j], packedData[j]);
     }
     cudaEventRecord(end_test_unpack2, 0);
     cudaEventSynchronize(end_test_unpack2);
@@ -245,6 +242,8 @@ int main(int argc, char *argv[]) {
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
+  (void)time_stats(dtime_unpack2, arguments.nloops, &averagetime_unpack2,
+		   &mintime_unpack2, &maxtime_unpack2);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.

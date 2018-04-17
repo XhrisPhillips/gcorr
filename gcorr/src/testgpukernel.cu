@@ -102,8 +102,8 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
   GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
 
   // Fringe rotation vector
-  gpuErrchk(cudaMalloc(rotVec, numantenna*2*numffts*2*sizeof(float)));
-  GPUalloc += numantenna*2*numffts*2*sizeof(float);
+  gpuErrchk(cudaMalloc(rotVec, numantenna*numffts*2*sizeof(float)));
+  GPUalloc += numantenna*numffts*2*sizeof(float);
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
