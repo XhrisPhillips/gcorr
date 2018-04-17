@@ -45,6 +45,7 @@ static struct argp_option options[] = {
   { "threads", 't', "NTHREADS", 0, "run with NTHREADS threads on each test" },
   { "antennas", 'a', "NANTENNAS", 0, "assume NANTENNAS antennas when required" },
   { "channels", 'c', "NCHANNELS", 0, "assume NCHANNELS frequency channels when required" },
+  { "samples", 's', "NSAMPLES", 0, "assume NSAMPLES when unpacking" },
   { 0 }
 };
 
@@ -53,6 +54,7 @@ struct arguments {
   int nthreads;
   int nantennas;
   int nchannels;
+  int nsamples;
 };
 
 /* The option parser */
@@ -71,6 +73,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     break;
   case 'c':
     arguments->nchannels = atoi(arg);
+    break;
+  case 's':
+    arguments->nsamples = atoi(args);
+    break;
   }
   return 0;
 }
@@ -109,6 +115,7 @@ int main(int argc, char *argv[]) {
   arguments.nthreads = 512;
   arguments.nantennas = 6;
   arguments.nchannels = 2048;
+  arguments.nsamples = 16384;
   int npolarisations = 2;
   
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
@@ -132,23 +139,27 @@ int main(int argc, char *argv[]) {
   int i, j, k, l, unpackBlocks;
 
   // Allocate the memory.
-  int packedBytes = arguments.nchannels * 2 * npolarisations / 8;
+  int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
   packedData = new int8_t*[arguments.nantennas];
   for (i = 0; i < arguments.nantennas; i++) {
     gpuErrchk(cudaMalloc(&packedData[i], packedBytes));
   }
 
   for (i = 0; i < arguments.nantennas * npolarisations; i++) {
-    gpuErrchk(cudaMalloc(&unpacked[i], arguments.nchannels * sizeof(cuComplex)));
+    gpuErrchk(cudaMalloc(&unpacked[i], arguments.nsamples * sizeof(cuComplex)));
   }
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
 
-  unpackBlocks = arguments.nchannels / npolarisations / arguments.nthreads;
-
+  unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
+  printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
+  printf("  nsamples = %d\n", arguments.nsamples);
+  printf("  nantennas = %d\n", arguments.nantennas);
+  
   cudaEventCreate(&start_test_unpack);
   cudaEventCreate(&end_test_unpack);
   for (i = 0; i < arguments.nloops; i++) {
+    printf("\nLOOP %d\n", i);
     // Generate some random 2 bit data each loop.
     for (j = 0; j < arguments.nantennas; j++) {
       for (k = 0; k < packedBytes; k++) {
@@ -162,20 +173,22 @@ int main(int argc, char *argv[]) {
 
     // Now do the unpacking.
     preLaunchCheck();
+    printf("  RUNNING KERNEL... ");
     cudaEventRecord(start_test_unpack, 0);
     for (j = 0; j < arguments.nantennas; j++) {
       unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
     }
     cudaEventRecord(end_test_unpack, 0);
     cudaEventSynchronize(end_test_unpack);
+    printf("  done.\n");
     cudaEventElapsedTime(&(dtime_unpack[i]), start_test_unpack, end_test_unpack);
     postLaunchCheck();
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
   printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
-  printf("Iterations | Average time |   Min time   |   Max time   |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms |\n", arguments.nloops,
+  printf("Iterations | Average time |  Min time   |  Max time   |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms |\n", (arguments.nloops - 1),
 	 averagetime_unpack, mintime_unpack, maxtime_unpack);
   
   
