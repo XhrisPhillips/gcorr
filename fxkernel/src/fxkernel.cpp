@@ -347,7 +347,7 @@ void FxKernel::process()
     {
       if (!antValid[j])
       {
-        b+=(numantennas-(j+1));
+        b += (numantennas-(j+1));
         continue;
       }
       for(int k=j+1;k<numantennas;k++)
@@ -367,6 +367,7 @@ void FxKernel::process()
 	  }
 	}
 	baselineCount[b]++;
+        b++;
       }
     }
   }
