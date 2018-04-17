@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
   /*
    * This benchmarks unpacker kernels.
    */
-  cuComplex **unpackedData;
+  cuComplex **unpackedData = new cuComplex*[arguments.nantennas * npolarisations];
   int8_t **packedData, pb;
   float *dtime_unpack=NULL, averagetime_unpack = 0.0;
   float mintime_unpack = 0.0, maxtime_unpack = 0.0;
