@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_unpack, end_test_unpack;
   curandGenerator_t gen;
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
-  int i, j, k, unpackBlocks;
+  int i, j, unpackBlocks;
 
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
