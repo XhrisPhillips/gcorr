@@ -217,6 +217,16 @@ int main(int argc, char *argv[]) {
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
   implied_time = (float)arguments.nsamples;
+  implied_time /= (float)npolarisations;
+  implied_time /= (float)arguments.nantennas;
+  if (arguments.complexdata) {
+    // Bandwidth is the same as the sampling rate.
+    implied_time /= (float)arguments.bandwidth;
+    // But the data is twice as big.
+    implied_time /= 2;
+  } else {
+    implied_time /= 2 * (float)arguments.bandwidth;
+  }
   /*/ float(npolarisations * arguments.nantennas *
 						   ((arguments.complexdata) ? 2 : 1) *
 						   arguments.nbits *
