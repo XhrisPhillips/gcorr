@@ -136,7 +136,7 @@ int main(int argc, char *argv[]) {
   arguments.nthreads = 512;
   arguments.nantennas = 6;
   arguments.nchannels = 2048;
-  arguments.nsamples = 2<<23;
+  arguments.nsamples = 1<<23;
   arguments.bandwidth = 64e6;
   arguments.verbose = 0;
   arguments.nbits = 2;
@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpackedData;
-  int8_t **packedData, *randomData;
+  int8_t **packedData;
   float *dtime_unpack=NULL, averagetime_unpack = 0.0;
   float mintime_unpack = 0.0, maxtime_unpack = 0.0;
   float implied_time;
@@ -216,11 +216,12 @@ int main(int argc, char *argv[]) {
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
-  implied_time = (float)arguments.nsamples / float(npolarisations * arguments.nantennas *
+  implied_time = (float)arguments.nsamples;
+  /*/ float(npolarisations * arguments.nantennas *
 						   ((arguments.complexdata) ? 2 : 1) *
 						   arguments.nbits *
 						   ((arguments.complexdata) ? arguments.bandwidth :
-						    (2 * arguments.bandwidth)));
+						   (2 * arguments.bandwidth))); */
   printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
