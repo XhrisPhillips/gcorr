@@ -119,7 +119,8 @@ int main(int argc, char *argv[]) {
   /*
    * This benchmarks unpacker kernels.
    */
-  cuComplex **unpackedData = new cuComplex*[arguments.nantennas * npolarisations];
+  cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
+  cuComplex **unpackedData;
   int8_t **packedData, pb;
   float *dtime_unpack=NULL, averagetime_unpack = 0.0;
   float mintime_unpack = 0.0, maxtime_unpack = 0.0;
@@ -135,8 +136,10 @@ int main(int argc, char *argv[]) {
   }
 
   for (i = 0; i < arguments.nantennas * npolarisations; i++) {
-    gpuErrchk(cudaMalloc(&unpackedData[i], arguments.nchannels * sizeof(cuComplex)));
+    gpuErrchk(cudaMalloc(&unpacked[i], arguments.nchannels * sizeof(cuComplex)));
   }
+  gpuErrchk(cudaMalloc(unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
+  gpuErrchk(cudaMemcpy(*unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
 
   unpackBlocks = arguments.nchannels / npolarisations / arguments.nthreads;
   for (i = 0; i < arguments.nloops; i++) {
