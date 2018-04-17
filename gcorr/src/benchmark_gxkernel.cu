@@ -233,7 +233,8 @@ int main(int argc, char *argv[]) {
   printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
-	 averagetime_unpack, mintime_unpack, maxtime_unpack, implied_time, (implied_time / averagetime_unpack));
+	 averagetime_unpack, mintime_unpack, maxtime_unpack, implied_time,
+	 ((implied_time * 1e3) / averagetime_unpack));
   
   
   // Clean up.
