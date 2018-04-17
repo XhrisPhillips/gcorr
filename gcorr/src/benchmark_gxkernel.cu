@@ -138,8 +138,8 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < arguments.nantennas * npolarisations; i++) {
     gpuErrchk(cudaMalloc(&unpacked[i], arguments.nchannels * sizeof(cuComplex)));
   }
-  gpuErrchk(cudaMalloc(unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
-  gpuErrchk(cudaMemcpy(*unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
+  gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
+  gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
 
   unpackBlocks = arguments.nchannels / npolarisations / arguments.nthreads;
   for (i = 0; i < arguments.nloops; i++) {
