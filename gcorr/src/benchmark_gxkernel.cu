@@ -424,22 +424,20 @@ int main(int argc, char *argv[]) {
   printf("  parallelAccum = %d\n", parallelAccum);
   printf("  nbaselines = %d\n", nbaseline);
   
-  
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
 		       parallelAccum * sizeof(cuComplex)));
   gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
 		       arguments.nsamples * sizeof(cuComplex)));
+  if (rc = cufftPlan1d(&plan, arguments.nchannels, CUFFT_C2C,
+		       2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
+    printf("FFT planning failed! %d\n", rc);
+    exit(0);
+  }
   for (i = 0; i < arguments.nloops; i++) {
 
     preLaunchCheck();
     cudaEventRecord(start_test_fft, 0);
-    printf("i = %d\n", i);
-    if (rc = cufftPlan1d(&plan, arguments.nchannels, CUFFT_C2C,
-		    2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
-      printf("FFT planning failed! %d\n", rc);
-      exit(0);
-    }
     if (cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
       printf("FFT execution failed!\n");
       exit(0);
@@ -450,12 +448,14 @@ int main(int argc, char *argv[]) {
     cudaEventElapsedTime(&(dtime_fft[i]), start_test_fft,
 			 end_test_fft);
     postLaunchCheck();
-    
+
   }
+  cufftDestroy(plan);
+    
   // Do some statistics.
   (void)time_stats(dtime_fft, arguments.nloops, &averagetime_fft,
 		   &mintime_fft, &maxtime_fft);
-  printf("\n==== ROUTINES: cufftPlan1d + cufftExecC2C ====\n");
+  printf("\n==== ROUTINES: cufftExecC2C ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
