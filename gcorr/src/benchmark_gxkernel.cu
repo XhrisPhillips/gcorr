@@ -435,7 +435,7 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_fft, 0);
 
-    if (rc = cufftPlan1d(&plan, (arguments.nchannels * 2), CUFFT_C2C,
+    if (rc = cufftPlan1d(&plan, arguments.nchannels, CUFFT_C2C,
 		    2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
       printf("FFT planning failed! %d\n", rc);
       exit(0);
