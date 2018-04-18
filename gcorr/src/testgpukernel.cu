@@ -385,9 +385,8 @@ int main(int argc, char *argv[])
     CudaCheckError();
 */
     int ccblock_width = 128;
-    int nantxp = numantennas*2;
-    dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, nantxp, numffts, numchannels, fftchannels);
+    dim3 ccblock(1+(numchannels-1)/ccblock_width, numantennas-1, numantennas-1);
+    CrossCorrAccumHoriz<2><<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftchannels);
 
   }
   
