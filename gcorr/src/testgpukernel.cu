@@ -344,17 +344,18 @@ int main(int argc, char *argv[])
     // Cross correlate
     gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
 
-/*
+#if 0
     cout << "Cross correlate" << endl;
     CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
     CudaCheckError();
     // cout << "Finalise" << endl;
     finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum);
     CudaCheckError();
-*/
+#else
     int ccblock_width = 128;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, numantennas-1, numantennas-1);
     CrossCorrAccumHoriz<2><<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftchannels);
+#endif
   }
   
   float dtime;
@@ -364,7 +365,11 @@ int main(int argc, char *argv[])
 
   cout << "Total execution time for " << arguments.nloops << " loops =  " <<  dtime << " ms" << endl;
 
-  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, numffts*numchannels, bandwidth);
+#if 0
+  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, parallelAccum*numchannels, bandwidth);
+#else
+  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, numchannels, bandwidth);
+#endif
 
   cudaDeviceSynchronize();
   cudaDeviceReset();
