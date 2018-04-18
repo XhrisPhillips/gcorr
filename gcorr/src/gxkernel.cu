@@ -331,14 +331,14 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
     // index into output vectors: = (j-i-1) + n-1 + ... + n-i
     int b = i*nant-i*(i+1)/2 + j-i-1;
-    b *= npol*npol;
 
     int r = nfft*nchan;
+    int s = nfft*fftwidth;
 
     for (int pi = 0; pi<npol; ++pi) {
 	for (int pj = 0; pj<npol; ++pj) {
-	    const float2* iv = ants+(i*npol+pi)*r+t;
-	    const float2* jv = ants+(j*npol+pj)*r+t;
+	    const float2* iv = &ants[antIdx(i, pi, t, s)];
+	    const float2* jv = &ants[antIdx(j, pj, t, s)];
 
 	    float2 u = iv[0];
 	    float2 v = jv[0];
@@ -346,7 +346,7 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 	    a.x = u.x*v.x + u.y*v.y;
 	    a.y = u.y*v.x - u.x*v.y;
 
-	    for (int k = fftwidth; k<r; k += fftwidth) {
+	    for (int k = fftwidth; k<s; k += fftwidth) {
 		u = iv[k];
 		v = jv[k];
 
@@ -356,8 +356,7 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
 	    a.x /= nfft;
 	    a.y /= nfft;
-	    accum[b*nchan+t] = a;
-	    ++b;
+	    accum[accumIdx(b, pi*npol+pj, t, r)] = a;
 	}
     }
 }
