@@ -169,7 +169,8 @@ int main(int argc, char *argv[]) {
   cuComplex **unpackedData, *unpackedData2;
   int8_t **packedData, **packedData8;
   int32_t *sampleShift;
-  float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL, *dtime_unpack4=NULL; 
+  float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL, *dtime_unpack4=NULL;
+  float *dtime_delaycalc=NULL;
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
   float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
@@ -179,11 +180,13 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_unpack2, end_test_unpack2;
   cudaEvent_t start_test_unpack3, end_test_unpack3;
   cudaEvent_t start_test_unpack4, end_test_unpack4;
+  cudaEvent_t start_test_delaycalc, end_test_delaycalc;
 
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack3 = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack4 = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_delaycalc = (float *)malloc(arguments.nloops * sizeof(float));
   int i, j, unpackBlocks;
 
   // Allocate the memory.
@@ -219,6 +222,8 @@ int main(int argc, char *argv[]) {
   cudaEventCreate(&end_test_unpack3);
   cudaEventCreate(&start_test_unpack4);
   cudaEventCreate(&end_test_unpack4);
+  cudaEventCreate(&start_test_delaycalc);
+  cudaEventCreate(&end_test_delaycalc);
   // Generate some random data.
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
@@ -232,6 +237,25 @@ int main(int argc, char *argv[]) {
       printf("\nLOOP %d\n", i);
     }
 
+    // Run the delay calculator.
+    preLaunchCheck();
+    if (arguments.verbose) {
+      printf("  RUNNING DELAY KERNEL...");
+    }
+    cudaEventRecord(start_test_delaycalc, 0);
+    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
+							     arguments.nchannels,
+							     rotationPhaseInfo,
+							     sampleShifts,
+							     fractionalSampleDelays);
+    cudaEventRecord(end_test_delaycalc, 0);
+    cudaEventSynchronize(end_test_delaycalc);
+    cudaEventElapsedTime(&(dtime_delaycalc[i]), start_test_delaycalc, end_test_delaycalc);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_delaycalc[i]);
+    }
+    postLaunchCheck();
+    
     // Now do the unpacking.
     preLaunchCheck();
     if (arguments.verbose) {
@@ -347,6 +371,8 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(end_test_unpack3);
   cudaEventDestroy(start_test_unpack4);
   cudaEventDestroy(end_test_unpack4);
+  cudaEventDestroy(start_test_delaycalc);
+  cudaEventDestroy(end_test_delaycalc);
 
 
   /*
