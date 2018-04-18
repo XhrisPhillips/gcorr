@@ -7,6 +7,7 @@
 #include <npp.h>
 #include <cuda.h>
 #include <curand.h>
+#include <cufft.h>
 #include "gxkernel.h"
 
 /*
@@ -150,7 +151,6 @@ int main(int argc, char *argv[]) {
   
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
-#ifndef NOUNPACK
   /*
    * This benchmarks unpacker kernels.
    */
@@ -299,23 +299,16 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(end_test_unpack);
   cudaEventDestroy(start_test_unpack2);
   cudaEventDestroy(end_test_unpack2);
+  cudaEventDestroy(start_test_unpack3);
+  cudaEventDestroy(end_test_unpack3);
 
-#endif
-  
-  
-#ifndef NOFRINGEROTATE
+
   /*
    * This benchmarks the performance of the fringe rotator kernel.
    */
   cuComplex *unpackedFR;
-#ifndef NOUNPACK
   /* A suitable array has already been defined and populated. */
   unpackedFR = unpackedData2;
-#else
-  /* Prepare an array of unpacked data. */
-  gpuErrchk(cudaMalloc(&unpackedDataFR, arguments.nantennas * npolarisations * arguments.nsamples * sizeof(cuComplex)));
-  int i;
-#endif
   int numffts;
   float *dtime_fringerotate=NULL, averagetime_fringerotate = 0.0;
   float mintime_fringerotate = 0.0, maxtime_fringerotate = 0.0;
@@ -403,6 +396,73 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(end_test_fringerotate);
   cudaEventDestroy(start_test_fringerotate2);
   cudaEventDestroy(end_test_fringerotate2);
+
+
+#ifndef NOFFT
+  /*
+   * This benchmarks the performance of the FFT.
+   */
+  cufftHandle plan;
+  cudaEvent_t start_test_fft, end_test_fft;
+  float *dtime_fft=NULL, averagetime_fft = 0.0;
+  float mintime_fft = 0.0, maxtime_fft = 0.0;
+  cuComplex *channelisedData, *baselineData;
+  int nbaseline = arguments.nantennas * (arguments.nantennas - 1) / 2;
+  int parallelAccum = (int)ceil(arguments.nthreads / arguments.nchannels + 1);
+  while (parallelAccum && numffts % parallelAccum) parallelAccum--;
+  if (parallelAccum == 0) {
+    printf("Error: can not determine block size for the cross correlator!\n");
+    exit(0);
+  }
+  
+  cudaEventCreate(&start_test_fft);
+  cudaEventCreate(&end_test_fft);
+
+  /* Allocate the necessary arrays. */
+  gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
+		       parallelAccum * sizeof(cuComplex)));
+  for (i = 0; i < arguments.nloops; i++) {
+
+    preLaunchCheck();
+    cudaEventRecord(start_test_fft, 0);
+
+    cufftPlan1d(&plan, (arguments.nchannels / 2), CUFFT_C2C,
+		2 * arguments.nantennas * numffts);
+    cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD);
+    
+    cudaEventRecord(end_test_fft, 0);
+    cudaEventSynchronize(end_test_fft);
+    cudaEventElapsedTime(&(dtime_fft[i]), start_test_fft,
+			 end_test_fft);
+    postLaunchCheck();
+    
+  }
+  // Do some statistics.
+  (void)time_stats(dtime_fft, arguments.nloops, &averagetime_fft,
+		   &mintime_fft, &maxtime_fft);
+  printf("\n==== ROUTINES: cufftPlan1d + cufftExecC2C ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_fft, mintime_fft, maxtime_fft, implied_time,
+	 ((implied_time * 1e3) / averagetime_fft));
+
+  cudaEventDestroy(start_test_fft);
+  cudaEventDestroy(end_test_fft);
+  
+#endif
+
+#define NOCROSSCORRACCUM
+  
+#ifndef NOCROSSCORRACCUM
+  /*
+   * This benchmarks the performance of the cross-correlator and accumulator
+   * combination.
+   */
+  cuComplex *baselineData;
+  
+  
+  
 #endif
   
 }
