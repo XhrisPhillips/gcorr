@@ -380,7 +380,7 @@ int main(int argc, char *argv[])
     CudaCheckError();
 
     // cout << "Finalise" << endl;
-    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
+    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum, nchunk);
     CudaCheckError();
 
   }
