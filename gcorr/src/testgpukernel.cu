@@ -205,7 +205,15 @@ int main(int argc, char *argv[])
   // Setup threads and blocks for the various kernels
   // Unpack
   int unpackThreads = NTHREADS;
-  int unpackBlocks  = subintsamples/nPol/unpackThreads;
+  int unpackBlocks;
+  if (nbit==2 && !iscomplex) {
+    unpackBlocks = subintsamples/2/unpackThreads; // 2 time samples/byte
+  } else if (nbit==8 && iscomplex) {
+    unpackBlocks = subintsamples*nPol; // Each pol separately
+  } else {
+    cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
+    exit(1);
+  }
   if (unpackThreads*unpackBlocks*nPol!=subintsamples) {
     cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
   }
@@ -279,7 +287,7 @@ int main(int argc, char *argv[])
   }
 
   // Configure CUFFT
-  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, 2*numantennas*numffts) != CUFFT_SUCCESS) {
+  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, nPol*numantennas*numffts) != CUFFT_SUCCESS) {
     cout << "CUFFT error: Plan creation failed" << endl;
     return(0);
   }
@@ -301,7 +309,11 @@ int main(int argc, char *argv[])
     // Unpack the data
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
-      unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+      if (nbit==2 && !iscomplex) {
+	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+      } else if (nbit==8 && iscomplex) {
+	//unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+      }
       CudaCheckError();
     }
 
