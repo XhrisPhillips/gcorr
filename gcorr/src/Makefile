@@ -21,6 +21,9 @@ CLINK	= -lcudart -lcufft -lcurand
 %.o : %.cu
 	$(NVCC) $(CUFLAGS) -c $<
 
+%.o : %.cpp
+	$(NVCC) $(CUFLAGS) -c $<
+
 %.o : %.c
 #	$(CC) -c -O3 -ffast-math $<
 	$(CC) -c  $<
@@ -29,8 +32,7 @@ all: $(EXECS)
 
 debug: NVCC = $(NVDEBUG)
 debug: all
-
-testgpukernel : gxkernel.cu testgpukernel.cu
+testgpukernel : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
 
 benchmark_gxkernel : gxkernel.cu benchmark_gxkernel.cu
