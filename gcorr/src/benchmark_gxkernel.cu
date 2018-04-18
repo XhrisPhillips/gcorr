@@ -424,7 +424,6 @@ int main(int argc, char *argv[]) {
   printf("  parallelAccum = %d\n", parallelAccum);
   printf("  nbaselines = %d\n", nbaseline);
   
-  
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
 		       parallelAccum * sizeof(cuComplex)));
@@ -450,6 +449,8 @@ int main(int argc, char *argv[]) {
     cudaEventElapsedTime(&(dtime_fft[i]), start_test_fft,
 			 end_test_fft);
     postLaunchCheck();
+
+    cufftDestroy(plan);
     
   }
   // Do some statistics.
