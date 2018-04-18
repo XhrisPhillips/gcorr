@@ -301,7 +301,7 @@ __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int
   }
 }
 
-__global__ void finaliseAccum(cuComplex *accum, int parallelAccum) { 
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) { 
 
   int nchan = blockDim.x * gridDim.x;
   int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
@@ -312,7 +312,7 @@ __global__ void finaliseAccum(cuComplex *accum, int parallelAccum) {
     cuCaddIf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)],
       accum[accumIdx(b, prod, ichan + i*nchan, nchan*parallelAccum)]);
   }
-  cuCdivCf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)], parallelAccum);
+  cuCdivCf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)], parallelAccum*nchunk);
 }
 
 // Launched with antenna indices in block .y and .z.

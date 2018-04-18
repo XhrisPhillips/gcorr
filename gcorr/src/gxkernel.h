@@ -63,7 +63,7 @@ __global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValue
 				     int numchannels, int fftchannels, int numffts, int subintsamples);
 __global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
 __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
-__global__ void finaliseAccum(cuComplex *accum, int parallelAccum);
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk);
 template <int npol>
 __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nantxp, int nfft, int nchan, int fftwidth);
 __global__ void printArray(cuComplex *a);
