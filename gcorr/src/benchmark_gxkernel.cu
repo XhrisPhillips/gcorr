@@ -157,14 +157,18 @@ int main(int argc, char *argv[]) {
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpackedData, *unpackedData2;
   int8_t **packedData;
-  float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
+  float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL; 
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
+  float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
   float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
   cudaEvent_t start_test_unpack2, end_test_unpack2;
+  cudaEvent_t start_test_unpack3, end_test_unpack3;
+
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_unpack3 = (float *)malloc(arguments.nloops * sizeof(float));
   int i, j, unpackBlocks;
 
   // Allocate the memory.
@@ -194,6 +198,8 @@ int main(int argc, char *argv[]) {
   cudaEventCreate(&end_test_unpack);
   cudaEventCreate(&start_test_unpack2);
   cudaEventCreate(&end_test_unpack2);
+  cudaEventCreate(&start_test_unpack3);
+  cudaEventCreate(&end_test_unpack3);
   // Generate some random data.
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
@@ -238,11 +244,30 @@ int main(int argc, char *argv[]) {
       printf("  done in %8.3f ms.\n", dtime_unpack2[i]);
     }
     postLaunchCheck();
+
+    preLaunchCheck();
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL 3... ");
+    }
+    cudaEventRecord(start_test_unpack3, 0);
+    for (j = 0; j < arguments.nantennas; j++) {
+      init_2bitLevels();
+      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+    }
+    cudaEventRecord(end_test_unpack3, 0);
+    cudaEventSynchronize(end_test_unpack3);
+    cudaEventElapsedTime(&(dtime_unpack3[i]), start_test_unpack3, end_test_unpack3);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_unpack3[i]);
+    }
+    postLaunchCheck();
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
   (void)time_stats(dtime_unpack2, arguments.nloops, &averagetime_unpack2,
 		   &mintime_unpack2, &maxtime_unpack2);
+  (void)time_stats(dtime_unpack3, arguments.nloops, &averagetime_unpack3,
+       &mintime_unpack3, &maxtime_unpack3);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -262,6 +287,11 @@ int main(int argc, char *argv[]) {
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
 	 averagetime_unpack2, mintime_unpack2, maxtime_unpack2, implied_time,
 	 ((implied_time * 1e3) / averagetime_unpack2));
+  printf("\n==== ROUTINE: unpack2bit_2chan_fast ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+   averagetime_unpack3, mintime_unpack3, maxtime_unpack3, implied_time,
+   ((implied_time * 1e3) / averagetime_unpack3));
   
   
   // Clean up.
