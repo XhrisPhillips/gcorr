@@ -111,7 +111,8 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
   gpuErrchk(cudaMalloc(rotationPhaseInfo, numantenna*numffts*2*sizeof(float)));
   GPUalloc += numantenna*numffts*2*sizeof(float);
 
-  // Fractional sample delay vector (will contain midpoint fractional sample delay for every FFT of every antenna)
+  // Fractional sample delay vector (will contain midpoint fractional sample delay [in units of radians per channel!] 
+  // for every FFT of every antenna)
   gpuErrchk(cudaMalloc(fractionalSampleDelays, numantenna*numffts*sizeof(float)));
   GPUalloc += numantenna*numffts*sizeof(float);
 
@@ -332,7 +333,7 @@ int main(int argc, char *argv[])
   for (int l=0; l<arguments.nloops; l++)
   {
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
-    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftchannels, rotationPhaseInfo, 
+    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftchannels, numchannels, rotationPhaseInfo, 
                                                              sampleShifts, fractionalSampleDelays);
     CudaCheckError();
 
