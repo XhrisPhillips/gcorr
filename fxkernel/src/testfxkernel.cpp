@@ -5,7 +5,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cstring>
-#include <chrono>  // for high_resolution_clock
+// #include <chrono>  // for high_resolution_clock
 
 using std::string;
 using std::cout;
@@ -19,6 +19,7 @@ using std::vector;
 /** 
  * @file testfxkernel.cpp
  * @brief A test harness for fxkernel
+ * @see FxKernel
  *   
  * This test harness reads a brief and simple config file, then creates a single
  * FxKernel object and sets it up with the input data and delays, and then

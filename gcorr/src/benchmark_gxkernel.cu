@@ -126,7 +126,6 @@ void time_stats(float *timearray, int ntime, float *average, float *min, float *
   return;
 }
 
-#define NOFRINGEROTATE
 
 int main(int argc, char *argv[]) {
   
@@ -142,6 +141,7 @@ int main(int argc, char *argv[]) {
   arguments.nbits = 2;
   arguments.complexdata = 0;
   int npolarisations = 2;
+  curandGenerator_t gen;
   
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
@@ -157,15 +157,18 @@ int main(int argc, char *argv[]) {
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpackedData, *unpackedData2;
   int8_t **packedData;
-  float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
+  float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL; 
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
+  float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
   float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
   cudaEvent_t start_test_unpack2, end_test_unpack2;
-  curandGenerator_t gen;
+  cudaEvent_t start_test_unpack3, end_test_unpack3;
+
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_unpack3 = (float *)malloc(arguments.nloops * sizeof(float));
   int i, j, unpackBlocks;
 
   // Allocate the memory.
@@ -187,7 +190,7 @@ int main(int argc, char *argv[]) {
     }*/
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
-  printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
+  printf("Each unpacking test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
   
@@ -195,6 +198,8 @@ int main(int argc, char *argv[]) {
   cudaEventCreate(&end_test_unpack);
   cudaEventCreate(&start_test_unpack2);
   cudaEventCreate(&end_test_unpack2);
+  cudaEventCreate(&start_test_unpack3);
+  cudaEventCreate(&end_test_unpack3);
   // Generate some random data.
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
@@ -239,11 +244,30 @@ int main(int argc, char *argv[]) {
       printf("  done in %8.3f ms.\n", dtime_unpack2[i]);
     }
     postLaunchCheck();
+
+    preLaunchCheck();
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL 3... ");
+    }
+    cudaEventRecord(start_test_unpack3, 0);
+    for (j = 0; j < arguments.nantennas; j++) {
+      init_2bitLevels();
+      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+    }
+    cudaEventRecord(end_test_unpack3, 0);
+    cudaEventSynchronize(end_test_unpack3);
+    cudaEventElapsedTime(&(dtime_unpack3[i]), start_test_unpack3, end_test_unpack3);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_unpack3[i]);
+    }
+    postLaunchCheck();
   }
   (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
 		   &mintime_unpack, &maxtime_unpack);
   (void)time_stats(dtime_unpack2, arguments.nloops, &averagetime_unpack2,
 		   &mintime_unpack2, &maxtime_unpack2);
+  (void)time_stats(dtime_unpack3, arguments.nloops, &averagetime_unpack3,
+       &mintime_unpack3, &maxtime_unpack3);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -263,6 +287,11 @@ int main(int argc, char *argv[]) {
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
 	 averagetime_unpack2, mintime_unpack2, maxtime_unpack2, implied_time,
 	 ((implied_time * 1e3) / averagetime_unpack2));
+  printf("\n==== ROUTINE: unpack2bit_2chan_fast ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+   averagetime_unpack3, mintime_unpack3, maxtime_unpack3, implied_time,
+   ((implied_time * 1e3) / averagetime_unpack3));
   
   
   // Clean up.
@@ -278,43 +307,73 @@ int main(int argc, char *argv[]) {
   /*
    * This benchmarks the performance of the fringe rotator kernel.
    */
-  cuComplex *unpackedFR = new cuComplex*[arguments.nantennas * npolarisations * arguments.nsamples];
-  int i, j, k;
-  float *dtime_addcomplex=NULL, averagetime_addcomplex = 0.0;
-  float mintime_addcomplex = 0.0, maxtime_addcomplex = 0.0;
-  cudaEvent_t start_test_addcomplex, end_test_addcomplex;
-  dtime_addcomplex = (float *)malloc(arguments.nloops * sizeof(float));
-
-  // Prepare the large arrays.
-  for (i = 0; i < arguments.nantennas * npolarisations; i++) {
-    gpuErrchk(cudaMalloc(&unpacked[i], arguments.nchannels * sizeof(cuComplex)));
+  cuComplex *unpackedFR;
+#ifndef NOUNPACK
+  /* A suitable array has already been defined and populated. */
+  unpackedFR = unpackedData2;
+#else
+  /* Prepare an array of unpacked data. */
+  gpuErrchk(cudaMalloc(&unpackedDataFR, arguments.nantennas * npolarisations * arguments.nsamples * sizeof(cuComplex)));
+  int i;
+#endif
+  int numffts;
+  float *dtime_fringerotate=NULL, averagetime_fringerotate = 0.0;
+  float mintime_fringerotate = 0.0, maxtime_fringerotate = 0.0;
+  float *rotVec;
+  cudaEvent_t start_test_fringerotate, end_test_fringerotate;
+  dim3 FringeSetblocks, fringeBlocks;
+  dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
+  
+  numffts = arguments.nsamples / arguments.nchannels;
+  if (numffts % 8) {
+    printf("Unable to proceed, numffts must be divisible by 8!\n");
+    exit(0);
   }
+
+  // Work out the block and thread numbers.
+  fringeBlocks = dim3((arguments.nchannels / (2 *arguments.nthreads)), numffts, arguments.nantennas);
+  FringeSetblocks = dim3(8, arguments.nantennas);
+  printf("\n\nEach fringe rotation test will run:\n");
+  printf("  nsamples = %d\n", arguments.nsamples);
+  printf("  nchannels = %d\n", arguments.nchannels);
+  printf("  nffts = %d\n", numffts);
+  
+  cudaEventCreate(&start_test_fringerotate);
+  cudaEventCreate(&end_test_fringerotate);
+
+  /* Allocate memory for the rotation vector. */
+  gpuErrchk(cudaMalloc(&rotVec, arguments.nantennas * numffts * 2 * sizeof(float)));
+  /* Fill it with random data. */
+  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
+  curandGenerateUniform(gen, rotVec, arguments.nantennas * numffts * 2);
+  curandDestroyGenerator(gen);
+    
   for (i = 0; i < arguments.nloops; i++) {
-    // Set the complex number values.
-    for (j = 0; j < arguments.nantennas * npolarisations; j++) {
-      for (k = 0; k < arguments.nchannels; k++) {
-	unpacked[j][k] = make_cuComplex(4.0 * ((float)rand() / (float)RAND_MAX),
-					4.0 * ((float)rand() / (float)RAND_MAX));
-      }
-    }
     
     preLaunchCheck();
-    cudaEventRecord(start_test_addcomplex, 0);
-    cuCaddIf<<<1, arguments.nthreads>>(&a, b);
-    cudaEventRecord(stop_test_addcomplex, 0);
-    cudaEventSynchronize(stop_test_addcomplex);
-    cudaEventElapsedTime(&(dtime_addcomplex[i]), start_test_addcomplex, stop_test_addcomplex);
+    cudaEventRecord(start_test_fringerotate, 0);
+
+    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    FringeRotate<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    
+    cudaEventRecord(end_test_fringerotate, 0);
+    cudaEventSynchronize(end_test_fringerotate);
+    cudaEventElapsedTime(&(dtime_fringerotate[i]), start_test_fringerotate,
+			 end_test_fringerotate);
     postLaunchCheck();
   }
   // Do some statistics.
-  (void)time_stats(dtime_addcomplex, arguments.nloops, &averagetime_addcomplex,
-		   &mintime_addcomplex, &maxtime_addcomplex);
-  printf("\n==== ROUTINE: cuCaddIf ====\n");
-  printf("Iterations | Average time | Min time | Max time |\n");
-  printf("%5d     | %8.3f ms | %8.3f ms | %8.3f ms |\n", arguments.nloops,
-	 averagetime_addcomplex, mintime.addcomplex, maxtime_addcomplex);
-  cudaEventDestroy(start_test_addcomplex);
-  cudaEventDestroy(end_test_addcomplex);
+  (void)time_stats(dtime_fringerotate, arguments.nloops, &averagetime_fringerotate,
+		   &mintime_fringerotate, &maxtime_fringerotate);
+  printf("\n==== ROUTINES: setFringeRotation + FringeRotate2 ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_fringerotate, mintime_fringerotate, maxtime_fringerotate, implied_time,
+	 ((implied_time * 1e3) / averagetime_fringerotate));
+  cudaEventDestroy(start_test_fringerotate);
+  cudaEventDestroy(end_test_fringerotate);
 #endif
   
 }
