@@ -301,7 +301,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Work out the block and thread numbers.
-  fringeBlocks = dim3((arguments.nchannels / arguments.nthreads), numffts, arguments.nantennas);
+  fringeBlocks = dim3((arguments.nchannels / (2 *arguments.nthreads)), numffts, arguments.nantennas);
   FringeSetblocks = dim3(8, arguments.nantennas);
   printf("\n\nEach fringe rotation test will run:\n");
   printf("  nsamples = %d\n", arguments.nsamples);
