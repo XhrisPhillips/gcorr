@@ -115,6 +115,36 @@ __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
   cuRotatePhase2(ant[sampIdx(iant, 1, ichan+ifft*fftsize, subintsamples)], sinT, cosT);
 }
 
+/* Apply fractional delay correction, inplace correction
+   ant is data after FFT
+   fractionalDelayValues is array of phase corrections - assumed to be nornalised to 
+   bandwidth and number of channels
+
+   Kernel Dimensions:
+
+   threadIdx.x/blockInd.x give FFT channel number
+   blockIdx.y is FFT number 
+   blockIdx.z is antenna number 
+*/
+
+__global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValues,
+				     int numchannels, int fftchannels, int numffts, int subintsamples) {
+  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t ifft = blockIdx.y;
+  size_t iant = blockIdx.z;
+  //int numffts = gridDim.y;
+  //int subintsamples = numffts * fftsize;
+
+  // phase and slope for this FFT
+  float dslope = fractionalDelayValues[iant*numffts + ifft];
+  float theta = ichan*dslope;
+
+  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftchannels, subintsamples)], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftchannels, subintsamples)], theta);
+}
+
+
+
 //__constant__ float levels_2bit[4];
 __constant__ float kLevels_2bit[4];
 
