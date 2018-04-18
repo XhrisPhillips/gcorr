@@ -45,6 +45,7 @@ void freeMem();
 
 void init_2bitLevels();
 __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src);
+__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src);
 __global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant);
 __global__ void setFringeRotation(float *rotVec);
 __global__ void FringeRotate(cuComplex *ant, float *rotVec);
