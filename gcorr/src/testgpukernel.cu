@@ -13,6 +13,8 @@
 #include <cuComplex.h>
 #include <cufft.h>
 
+#define NTHREADS 256
+
 using std::string;
 using std::cout;
 using std::cerr;
@@ -278,15 +280,30 @@ int main(int argc, char *argv[])
 
   // Setup threads and blocks for the various kernels
   // Unpack
-  int unpackThreads = 512;
+  int unpackThreads = NTHREADS;
   int unpackBlocks  = subintsamples/nPol/unpackThreads;
   if (unpackThreads*unpackBlocks*nPol!=subintsamples) {
     cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
   }
 
+  // Fringe Rotate
+  int fringeThreads, blockchan;
+  if (numchannels<=NTHREADS) {
+    fringeThreads = numchannels;
+    blockchan = 1;
+  } else {
+    fringeThreads = NTHREADS;
+    blockchan = fftchannels/NTHREADS;
+    if (fftchannels%NTHREADS) {
+      cerr << "Error: NTHREADS not divisible into fftchannels" << endl;
+      exit(1);
+    }
+  }
+  // Fringe Rotation
+  dim3 fringeBlocks = dim3(blockchan, numffts, numantennas);
+  
   // CrossCorr
   int targetThreads = 50e4;  // This seems a *lot*
-  int blockchan;
   int corrThreads;
   if (numchannels<=512) {
     corrThreads = numchannels;
@@ -309,8 +326,6 @@ int main(int argc, char *argv[])
   // Final Cross Corr accumulation
   dim3 accumBlocks = dim3(blockchan, 4, nbaseline);
 
-  // Fringe Rotation
-  dim3 fringeBlocks = dim3(blockchan, numffts, numantennas);
   
   cout << "Allocate Memory" << endl;
   // Allocate space in the buffers for the data and the delays
@@ -346,7 +361,7 @@ int main(int argc, char *argv[])
     // Set the delays //
 
     // Unpack the data
-    cout << "Unpack data" << endl;
+    //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
       unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
       CudaCheckError();
@@ -362,11 +377,11 @@ int main(int argc, char *argv[])
     setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
     CudaCheckError();
 
-    FringeRotate2<<<fringeBlocks,unpackThreads>>>(unpackedData, rotVec);
+    FringeRotate<<<fringeBlocks,fringeThreads>>>(unpackedData, rotVec);
     CudaCheckError();
   
     // FFT
-    cout << "FFT data" << endl;
+    //cout << "FFT data" << endl;
     if (cufftExecC2C(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
       cout << "CUFFT error: ExecC2C Forward failed" << endl;
       return(0);
@@ -374,13 +389,13 @@ int main(int argc, char *argv[])
 
     // Cross correlate
     gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
-    cout << "Cross correlate" << endl;
-    //CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-    CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex)>>>(channelisedData, baselineData, numantennas, nchunk);
+    //cout << "Cross correlate" << endl;
+    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    //CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex)>>>(channelisedData, baselineData, numantennas, nchunk);
     CudaCheckError();
 
     // cout << "Finalise" << endl;
-    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
+    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum);
     CudaCheckError();
 
   }
