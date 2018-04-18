@@ -13,10 +13,16 @@ def time2vex(secs):
     tupletime = time.gmtime(secs)
     return time.strftime("%Yy%jd%Hh%Mm%Ss", tupletime)
 
-if not len(sys.argv) == 5:
+if not len(sys.argv) == 5 and not len(sys.argv) == 6:
     print "Usage: %s <inputfile> <outputfile> <starttimestring> <stoptimestring>" % sys.argv[0]
     print "       format of time strings is vex style: e.g. 2011y245d10h20m30s"
     sys.exit()
+
+allowallthreadids = False
+if len(sys.argv) == 6:
+    if sys.argv[5] == "--allowallthreads":
+        allowallthreadids = True
+
 os.environ['TZ'] = 'UTC'
 time.tzset()
 
@@ -56,14 +62,9 @@ while infp:
         pass
     buf = infp.read(length * 8 - header_size)
 
-    # Uncomment for any thread (needed if you have single thread data but it doesn't have threadid = 0)
-    #if t >= stop:
-    #    break
-    #if t >= start:
-    # Comment the following 3 lines out to allow any thread (needed if you have single thread data but it doesn't have threadid = 0)
-    if thread_id == 0 and t >= stop:
+    if t >= stop:
         break
-    if thread_id == 0 and t >= start:
+    if (thread_id == 0 or allowallthreadids) and t >= start:
         if last_frame == -1 and frame != 0:
             print "Warning: data doesn't start on integral second boundary"
             pass
