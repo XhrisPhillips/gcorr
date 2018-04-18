@@ -58,7 +58,7 @@ private:
   /**
    * Method to correct fractional sample delay of the channelised data in-place
    * @param channelised channelised array containing FFTed (channelised) unpacked data array (complex 32bit float)
-   * @param fracdelay resisdual delay after course integer delay correction 
+   * @param fracdelay resisdual delay between the desired delay and course integer delay correction 
    */
   void fracSampleCorrect(cf32 ** channelised, f64 fracdelay);
   
@@ -73,14 +73,11 @@ private:
   bool *antValid; /**< checks if there is good data for the given antenna at a given time (if yes, it will accumulate; if not, if will leave this data out) */
   int *baselineCount; /**< counter incrementing number of baselines with successfully obtained cross correlations and accumulations */
   
-  // output data array
-  cf32 *** visibilities;
+  cf32 *** visibilities; /**< output data array */
 
-  // delay polynomial for each antenna. Put in the time in unit of FFT lengths since start of subintegration, get back delay in seconds.
-  double ** delays;
+  double ** delays; /**< delay polynomial for each antenna. Put in the time in units of FFT lengths since start of subintegration, get back delay in seconds. */
 
-  // Offset for each antenna file from the nominal start time of the subintegration. In seconds.
-  double * filestartoffsets;
+  double * filestartoffsets; /**< Offset for each antenna file from the nominal start time of the subintegration. In seconds. */
 
   // internal arrays
   f64 * subtoff;
@@ -120,19 +117,19 @@ private:
   vecFFTSpecC_cf32 * pFFTSpecC;
 
   // other constants
-  int numantennas;
-  int numchannels;
-  int nbits;  // Number of bits for voltage samples
-  int numffts;  // i.e., the length of a subint
-  int fftchannels; // 2*nchan for real data, nchan for complex
-  int nbaselines; // Number of baselines (nant*(nant-1)/2)
-  int stridesize; // used for the time-saving complex multiplications
-  int substridesize; // used for the time-saving complex multiplications.  Equal to stridesize for complex data, or 2x stride size for real data
-  double lofreq; // in Hz
-  double bandwidth; // in Hz
-  double sampletime; //in seconds
-  bool fractionalLoFreq; //if true, means we need to do an extra multiplication in fringe rotation phase calculation
-  bool iscomplex;  // Is the original data real or complex voltages
-  int cfact;
+  int numantennas; /**< number of antennas in the dataset */
+  int numchannels; /**< the number of channels to create during channelisation; each channel is a unique frequency point */
+  int nbits;  /**< Number of bits for voltage samples */
+  int numffts;  /**< the number of FFTs computed; i.e., the length of a subint */
+  int fftchannels; /**< length of an FFT; 2*nchan for real data, and nchan for complex */
+  int nbaselines; /**< Number of baselines (nant*(nant-1)/2) */
+  int stridesize; /**< used for the time-saving complex multiplications */
+  int substridesize; /**< used for the time-saving complex multiplications. Equal to stridesize for complex data, or 2x stridesize for real data */
+  double lofreq; /**< local oscillator frequency; in Hz */
+  double bandwidth; /**< in Hz */
+  double sampletime; /**< 1/(2*bandwidth); in seconds */
+  bool fractionalLoFreq; /**< if true, means we need to do an extra multiplication in fringe rotation phase calculation */
+  bool iscomplex;  /**< Is the original data real or complex voltages? */
+  int cfact; /**< "complex factor"; either 1 (for real data) or 2 (for complex data); determines length of substridesize (twice the stridesize for real data [i.e. need 2N samples for nchan] and equal to the stridesize for complex data [need N samples for nchan]) */
 };
 
