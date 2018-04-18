@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cstring>
+#include <stdint.h>
 
 using std::vector;
 using std::string;

@@ -5,6 +5,14 @@
 #include <stdio.h>
 
 __host__ __device__ static __inline__ int
+sampIdx(int antenna, int pol, int sample, int stride)
+{
+  const int num_pols = 2;
+
+  return (antenna * num_pols + pol) * stride + sample;
+}
+
+__host__ __device__ static __inline__ int
 antIdx(int antenna, int pol, int channel, int stride)
 {
   const int num_pols = 2;

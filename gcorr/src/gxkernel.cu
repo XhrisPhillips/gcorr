@@ -92,8 +92,8 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   float theta = p0 + ichan*p1;
 
   // Should precompute sin/cos
-  cuRotatePhase(&ant[iant*2*subintsamples + ichan+ifft*fftsize], theta);
-  cuRotatePhase(&ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftsize, subintsamples)], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftsize, subintsamples)], theta);
 }
 
 __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
@@ -109,11 +109,10 @@ __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
   float p1 = rotVec[iant*numffts*2 + ifft*2+1];
   float theta = p0 + ichan*p1;
 
- // Should precompute sin/cos
   float sinT, cosT;
   __sincosf(theta, &sinT, &cosT);
-  cuRotatePhase2(ant[iant*2*subintsamples + ichan+ifft*fftsize], sinT, cosT);
-  cuRotatePhase2(ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], sinT, cosT);
+  cuRotatePhase2(ant[sampIdx(iant, 0, ichan+ifft*fftsize, subintsamples)], sinT, cosT);
+  cuRotatePhase2(ant[sampIdx(iant, 1, ichan+ifft*fftsize, subintsamples)], sinT, cosT);
 }
 
 //__constant__ float levels_2bit[4];

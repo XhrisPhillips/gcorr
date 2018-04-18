@@ -13,6 +13,8 @@
 #include <cuComplex.h>
 #include <cufft.h>
 
+#include "common.h"
+
 #define NTHREADS 256
 
 using std::string;
@@ -110,86 +112,6 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
 
-void allocDataHost(uint8_t ***data, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int &subintbytes)
-{
-  int i;
-
-  subintbytes = subintsamples*nbit*nPol/8;  // Watch 31bit overflow
-  cout << "Allocating " << subintbytes/1024/1024 << " MB per antenna per subint" << endl;
-  cout << "           " << subintbytes * numantenna / 1024 / 1024 << " MB total" << endl;
-
-
-  *data = new uint8_t*[numantenna];
-  for (i=0; i<numantenna; i++)
-  {
-    (*data)[i] = new uint8_t[subintbytes];  // SHOULD BE PINNED
-  }
-}
-
-void parseConfig(char *config, int &nbit, bool &iscomplex, int &nchan, int &nant, double &lo, double &bandwidth,
-		 int &numffts, vector<string>& antenna, vector<string>& antFiles, double ***delays) {
-
-  std::ifstream fconfig(config);
-
-  string line;
-  int anttoread = 0;
-  int iant = 0;
-  while (std::getline(fconfig, line)) {
-    std::istringstream iss(line);
-    string keyword;
-    if (!(iss >> keyword)) {
-      cerr << "Error: Could not parse \"" << line << "\"" << endl;
-      std::exit(1);
-    }
-    if (anttoread) {
-      string thisfile;
-      iss >> thisfile;
-      antenna.push_back(keyword);
-      antFiles.push_back(thisfile);
-      (*delays)[iant] = new double[3]; //assume we're going to read a second-order polynomial for each antenna, d = a*t^2 + b*t + c, t in units of FFT windows, d in seconds
-      for (int i=0;i<3;i++) {
-	iss >> (*delays)[iant][i];  // Error checking needed
-      }
-      iant++;
-      anttoread--;
-    } else if (strcasecmp(keyword.c_str(), "COMPLEX")==0) {
-      iss >> iscomplex; // Should error check
-    } else if (strcasecmp(keyword.c_str(), "NBIT")==0) {
-      iss >> nbit; // Should error check
-    } else if (strcasecmp(keyword.c_str(), "NCHAN")==0) {
-      iss >> nchan; // Should error check
-    } else if (strcasecmp(keyword.c_str(), "LO")==0) {
-      iss >> lo; // Should error check
-    } else if (strcasecmp(keyword.c_str(), "BANDWIDTH")==0) {
-      iss >> bandwidth; // Should error check
-    } else if (strcasecmp(keyword.c_str(), "NUMFFTS")==0) {
-      iss >> numffts; // Should error check
-    } else if (strcasecmp(keyword.c_str(), "NANT")==0) {
-      iss >> nant; // Should error check
-      *delays = new double*[nant]; // Alloc memory for delay buffer
-      anttoread = nant;
-      iant = 0;
-    } else {
-      std::cerr << "Error: Unknown keyword \"" << keyword << "\"" << endl;
-    }
-  }
-}
-
-int readdata(int bytestoread, vector<std::ifstream*> &antStream, uint8_t **inputdata) {
-  for (int i=0; i<antStream.size(); i++) {
-    antStream[i]->read((char*)inputdata[i], bytestoread);
-    if (! *(antStream[i])) {
-      if (antStream[i]->eof())    {
-    	return(2);
-      } else {
-    	cerr << "Error: Problem reading data" << endl;
-    	return(1);
-      }
-    }
-  }
-  return(0);
-}
-
 inline float carg(const cuComplex& z) {return atan2(cuCimagf(z), cuCrealf(z));} // polar angle
 
 void saveVisibilities(const char *outfile, cuComplex *baselines, int nbaseline, int nchan, int parallelAccum, double bandwidth) {
@@ -225,8 +147,11 @@ int main(int argc, char *argv[])
   // variables for the test
   char *configfile;
   int subintbytes, status, cfactor;
+  int nPol;
   uint8_t ** inputdata;
-  double ** delays;
+  double ** delays; /**< delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration */
+  double * antfileoffsets; /**< offset from each the nominal start time of the integration for each antenna data file.  
+                                In units of seconds. */
   int numchannels, numantennas, nbaseline, numffts, nbit;
   double lo, bandwidth;
   bool iscomplex;
@@ -259,10 +184,9 @@ int main(int argc, char *argv[])
   init_2bitLevels();
 
   // load up the test input data and delays from the configfile
-  parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
+  parseConfig(configfile, nbit, nPol, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays, &antfileoffsets);
 
   nbaseline = numantennas*(numantennas-1)/2;
-  int nPol = 2;
   if (iscomplex) {
     cfactor = 1;
   } else{
@@ -329,7 +253,7 @@ int main(int argc, char *argv[])
   
   cout << "Allocate Memory" << endl;
   // Allocate space in the buffers for the data and the delays
-  allocDataHost(&inputdata, numantennas, subintsamples, nbit, nPol, iscomplex, subintbytes);
+  allocDataHost(&inputdata, numantennas, numchannels, numffts, nbit, nPol, iscomplex, subintbytes);
 
   // Allocate space on the GPU
   allocDataGPU(&packedData, &unpackedData, &channelisedData,
