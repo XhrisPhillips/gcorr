@@ -46,6 +46,7 @@ void freeMem();
 void init_2bitLevels();
 
 __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src);
+__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src);
 __global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant);
 __global__ void setFringeRotation(float *rotVec);
 __global__ void FringeRotate(cuComplex *ant, float *rotVec);
@@ -53,6 +54,8 @@ __global__ void FringeRotate2(cuComplex *ant, float *rotVec);
 __global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
 __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
 __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk);
+template <int npol>
+__global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nantxp, int nfft, int nchan, int fftwidth);
 __global__ void printArray(cuComplex *a);
 __global__ void printArrayInt(int8_t *a);
 
