@@ -375,8 +375,8 @@ int main(int argc, char *argv[])
     // Cross correlate
     gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
     cout << "Cross correlate" << endl;
-    //CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-    CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex)>>>(channelisedData, baselineData, numantennas, nchunk);
+    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    //CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex)>>>(channelisedData, baselineData, numantennas, nchunk);
     CudaCheckError();
 
     // cout << "Finalise" << endl;
