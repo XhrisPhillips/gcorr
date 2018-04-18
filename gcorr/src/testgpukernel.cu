@@ -371,7 +371,7 @@ int main(int argc, char *argv[])
     CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
     CudaCheckError();
     // cout << "Finalise" << endl;
-    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum);
+    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum, nchunk);
     CudaCheckError();
 #else
     int ccblock_width = 128;
