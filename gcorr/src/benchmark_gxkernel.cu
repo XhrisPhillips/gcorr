@@ -155,8 +155,7 @@ int main(int argc, char *argv[]) {
    * This benchmarks unpacker kernels.
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
-  cuComplex *unpacked2 = new cuComplex[arguments.nantennas * npolarisations * arguments.nsamples];
-  cuComplex **unpackedData;
+  cuComplex **unpackedData, *unpackedData2;
   int8_t **packedData;
   float *dtime_unpack=NULL, *dtime_unpack2=NULL; 
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
@@ -181,7 +180,8 @@ int main(int argc, char *argv[]) {
   }
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
-
+  gpuErrchk(cudaMalloc(&unpackedData2, arguments.nantennas * npolarisations * arguments.nsamples * sizeof(cuComplex)));
+  
   /*for (i = 0; i < arguments.nantennas; i++) {
     gpuErrchk(cudaMalloc(&unpacked2[i], arguments.nsamples * npolarisations * sizeof(cuComplex)));
     }*/
@@ -230,7 +230,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack2, 0);
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpacked2[2*j*arguments.nsamples], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
     }
     cudaEventRecord(end_test_unpack2, 0);
     cudaEventSynchronize(end_test_unpack2);
