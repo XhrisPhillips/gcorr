@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
     }*/
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
-  printf("Each test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
+  printf("Each unpacking test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
   
@@ -303,7 +303,7 @@ int main(int argc, char *argv[]) {
   // Work out the block and thread numbers.
   fringeBlocks = dim3(arguments.nchannels, numffts, arguments.nantennas);
   FringeSetblocks = dim3(8, arguments.nantennas);
-  printf("Each fringe rotation test will run:\n");
+  printf("\n\nEach fringe rotation test will run:\n");
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nchannels = %d\n", arguments.nchannels);
   printf("  nffts = %d\n", numffts);
