@@ -69,6 +69,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 /* The argp parser */
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
+int kNumStreams = 4;
 
 #include "gxkernel.h"
 
@@ -118,9 +119,8 @@ void allocDataHost(uint8_t ***data, int numantenna, int subintsamples, int nbit,
 
 
   *data = new uint8_t*[numantenna];
-  for (i=0; i<numantenna; i++)
-  {
-    (*data)[i] = new uint8_t[subintbytes];  // SHOULD BE PINNED
+  for (int a=0; a<numantenna; a++){
+    gpuErrchk(cudaMallocHost(&(*data)[a], subintbytes*sizeof(uint8_t)));
   }
 }
 
@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
   
   // Read in the command line arguments.
   struct arguments arguments;
-  arguments.nloops = 1;
+  arguments.nloops = 10;
   arguments.output_binary = 0;
   arguments.configfile[0] = 0;
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
@@ -253,8 +253,6 @@ int main(int argc, char *argv[])
 
   cudaEventCreate(&start_exec);
   cudaEventCreate(&stop_exec);
-  
-  void init_2bitLevels();
 
   // load up the test input data and delays from the configfile
   parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
@@ -331,17 +329,21 @@ int main(int argc, char *argv[])
     return(0);
   }
   
+  cout << "Reading data" << endl;
   status = readdata(subintbytes, antStream, inputdata);
   if (status) exit(1);
-
-  // Copy data to GPU
-  cout << "Copy data to GPU" << endl;
-  for (int i=0; i<numantennas; i++) {
-    gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
-  }
+  init_2bitLevels();
 
   cudaEventRecord(start_exec, 0);
+  cout << "Entering loop" << endl;
   for (int l=0; l<arguments.nloops; l++) {
+    int stream = l % kNumStreams;
+
+    // Copy data to GPU
+    cout << "Copy data to GPU" << endl;
+    for (int i=0; i<numantennas; i++) {
+      gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
+    }
   
     // Set the delays //
 
