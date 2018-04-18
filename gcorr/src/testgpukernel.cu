@@ -69,13 +69,14 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 /* The argp parser */
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
-int kNumStreams = 4;
+int kNumStreams = 2;
 
 #include "gxkernel.h"
 
-void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
-		  cuComplex **channelisedData, cuComplex **baselineData, 
-		  float **rotVec, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum) {
+void allocDataGPU(int8_t ***packedData, cuComplex ***unpackedData,
+		  cuComplex ***channelisedData, cuComplex ***baselineData, 
+		  float ***rotVec, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum,
+      int num_streams) {
   
   unsigned long long GPUalloc = 0;
 
@@ -87,32 +88,37 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
     GPUalloc += packedBytes;
   }
 
+  *unpackedData = new cuComplex*[num_streams];
+  *channelisedData = new cuComplex*[num_streams];
+  *baselineData = new cuComplex*[num_streams];
+  *rotVec = new float*[num_streams];
+
   // Unpacked data
-  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*subintsamples*sizeof(cuComplex)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
-  
-  // FFT output
-  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*subintsamples*sizeof(cuComplex)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
-
-  // Baseline visibilities
-  int nbaseline = numantenna*(numantenna-1)/2;
-  if (!iscomplex) subintsamples /= 2;
   cout << "Alloc " << nchan*parallelAccum << " complex output values per baseline" << endl;
-  gpuErrchk(cudaMalloc(baselineData, nbaseline*4*nchan*parallelAccum*sizeof(cuComplex)));
-  GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
+  for (int s=0; s<num_streams; s++) {
+    gpuErrchk(cudaMalloc(&(*unpackedData)[s], numantenna*nPol*subintsamples*sizeof(cuComplex)));
+    GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
+  
+    // FFT output
+    gpuErrchk(cudaMalloc(&(*channelisedData)[s], numantenna*nPol*subintsamples*sizeof(cuComplex)));
+    GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
 
-  // Fringe rotation vector
-  gpuErrchk(cudaMalloc(rotVec, numantenna*numffts*2*sizeof(float)));
-  GPUalloc += numantenna*numffts*2*sizeof(float);
+    // Baseline visibilities
+    int nbaseline = numantenna*(numantenna-1)/2;
+    if (!iscomplex) subintsamples /= 2;
+    gpuErrchk(cudaMalloc(&(*baselineData)[s], nbaseline*4*nchan*parallelAccum*sizeof(cuComplex)));
+    GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
+
+    // Fringe rotation vector
+    gpuErrchk(cudaMalloc(&(*rotVec)[s], numantenna*numffts*2*sizeof(float)));
+    GPUalloc += numantenna*numffts*2*sizeof(float);
+  }
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
 
 void allocDataHost(uint8_t ***data, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int &subintbytes)
 {
-  int i;
-
   subintbytes = subintsamples*nbit*nPol/8;  // Watch 31bit overflow
   cout << "Allocating " << subintbytes/1024/1024 << " MB per antenna per subint" << endl;
   cout << "           " << subintbytes * numantenna / 1024 / 1024 << " MB total" << endl;
@@ -232,9 +238,9 @@ int main(int argc, char *argv[])
   vector<std::ifstream *> antStream;
 
   int8_t **packedData;
-  float *rotVec;
-  cuComplex *unpackedData, *channelisedData, *baselineData;
-  cufftHandle plan;
+  float **rotVec;
+  cuComplex **unpackedData, **channelisedData, **baselineData;
+  cufftHandle plan[kNumStreams];
   cudaEvent_t start_exec, stop_exec;
   
   // Read in the command line arguments.
@@ -317,22 +323,30 @@ int main(int argc, char *argv[])
   // Allocate space on the GPU
   allocDataGPU(&packedData, &unpackedData, &channelisedData,
 	       &baselineData, &rotVec, numantennas, subintsamples,
-	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum);
+	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum, kNumStreams);
 
   for (int i=0; i<numantennas; i++) {
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
   }
 
   // Configure CUFFT
-  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, 2*numantennas*numffts) != CUFFT_SUCCESS) {
-    cout << "CUFFT error: Plan creation failed" << endl;
-    return(0);
+  for (int s=0; s<kNumStreams; s++) {
+    if (cufftPlan1d(&plan[s], fftchannels, CUFFT_C2C, 2*numantennas*numffts) != CUFFT_SUCCESS) {
+      cout << "CUFFT error: Plan creation failed" << endl;
+      return(0);
+    }
   }
   
   cout << "Reading data" << endl;
   status = readdata(subintbytes, antStream, inputdata);
   if (status) exit(1);
   init_2bitLevels();
+
+  // Initialise CUDA streams
+  cout << "Initialising CUDA streams" << endl;
+  cudaStream_t streams[kNumStreams];
+  for (int s=0; s<kNumStreams; s++)
+    gpuErrchk(cudaStreamCreate(&streams[s]));
 
   cudaEventRecord(start_exec, 0);
   cout << "Entering loop" << endl;
@@ -342,7 +356,7 @@ int main(int argc, char *argv[])
     // Copy data to GPU
     cout << "Copy data to GPU" << endl;
     for (int i=0; i<numantennas; i++) {
-      gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
+      gpuErrchk(cudaMemcpyAsync(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice, streams[stream])); 
     }
   
     // Set the delays //
@@ -350,7 +364,7 @@ int main(int argc, char *argv[])
     // Unpack the data
     cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
-      unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+      unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[i]);
       CudaCheckError();
     }
 
@@ -361,28 +375,29 @@ int main(int argc, char *argv[])
       exit(1);
     }
     dim3 FringeSetblocks = dim3(8, numantennas);
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    setFringeRotation<<<FringeSetblocks, numffts/8,0,streams[stream]>>>(rotVec[stream]);
     CudaCheckError();
 
-    FringeRotate2<<<fringeBlocks,unpackThreads>>>(unpackedData, rotVec);
+    FringeRotate2<<<fringeBlocks,unpackThreads,0,streams[stream]>>>(unpackedData[stream], rotVec[stream]);
     CudaCheckError();
   
     // FFT
     cout << "FFT data" << endl;
-    if (cufftExecC2C(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+    cufftSetStream(plan[stream], streams[stream]);
+    if (cufftExecC2C(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
       cout << "CUFFT error: ExecC2C Forward failed" << endl;
       return(0);
     }
 
     // Cross correlate
-    gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
+    gpuErrchk(cudaMemsetAsync(baselineData[stream], 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex), streams[stream]));
     cout << "Cross correlate" << endl;
     //CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-    CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex)>>>(channelisedData, baselineData, numantennas, nchunk);
+    CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex),streams[stream]>>>(channelisedData[stream], baselineData[stream], numantennas, nchunk);
     CudaCheckError();
 
     // cout << "Finalise" << endl;
-    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, numantennas, nchunk);
+    finaliseAccum<<<accumBlocks,corrThreads,0,streams[stream]>>>(baselineData[stream], numantennas, nchunk);
     CudaCheckError();
 
   }
@@ -394,7 +409,7 @@ int main(int argc, char *argv[])
 
   cout << "Total execution time for " << arguments.nloops << " loops =  " <<  dtime << " ms" << endl;
 
-  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, parallelAccum, bandwidth);
+  saveVisibilities("vis.out", baselineData[0], nbaseline, numchannels, parallelAccum, bandwidth);
 
   cudaDeviceSynchronize();
   cudaDeviceReset();
