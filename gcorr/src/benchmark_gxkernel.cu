@@ -414,7 +414,8 @@ int main(int argc, char *argv[]) {
     printf("Error: can not determine block size for the cross correlator!\n");
     exit(0);
   }
-  
+  dtime_fft = (float *)malloc(arguments.nloops * sizeof(float));
+
   cudaEventCreate(&start_test_fft);
   cudaEventCreate(&end_test_fft);
 
@@ -433,9 +434,15 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_fft, 0);
 
-    cufftPlan1d(&plan, (arguments.nchannels * 2), CUFFT_C2C,
-		2 * arguments.nantennas * numffts);
-    cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD);
+    if (cufftPlan1d(&plan, (arguments.nchannels * 2), CUFFT_C2C,
+		    2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
+      printf("FFT planning failed!\n");
+      exit(0);
+    }
+    if (cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+      printf("FFT execution failed!\n");
+      exit(0);
+    }
     
     cudaEventRecord(end_test_fft, 0);
     cudaEventSynchronize(end_test_fft);
