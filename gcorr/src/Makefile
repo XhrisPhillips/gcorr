@@ -7,6 +7,7 @@ CC      = gcc -O3 -Wall -g
 NVCC	= nvcc
 NVDEBUG = -lineinfo -g -G
 
+
 EXECS = testgpukernel benchmark_gxkernel
 
 SOURCES	= gxkernel.cu testgpukernel.cu benchmark_gxkernel.cu
@@ -25,6 +26,9 @@ CLINK	= -lcudart -lcufft -lcurand
 	$(CC) -c  $<
 
 all: $(EXECS)
+
+debug: NVCC += $(NVDEBUG)
+debug: all
 
 testgpukernel : gxkernel.cu testgpukernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^

@@ -326,6 +326,7 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_fringerotate2, end_test_fringerotate2;
   dim3 FringeSetblocks, fringeBlocks;
   dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_fringerotate2 = (float *)malloc(arguments.nloops * sizeof(float));
   
   numffts = arguments.nsamples / arguments.nchannels;
   if (numffts % 8) {
@@ -357,6 +358,18 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < arguments.nloops; i++) {
     
     preLaunchCheck();
+    cudaEventRecord(start_test_fringerotate2, 0);
+
+    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    
+    cudaEventRecord(end_test_fringerotate2, 0);
+    cudaEventSynchronize(end_test_fringerotate2);
+    cudaEventElapsedTime(&(dtime_fringerotate2[i]), start_test_fringerotate2,
+			 end_test_fringerotate2);
+    postLaunchCheck();
+
+    preLaunchCheck();
     cudaEventRecord(start_test_fringerotate, 0);
 
     setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
@@ -368,18 +381,7 @@ int main(int argc, char *argv[]) {
 			 end_test_fringerotate);
     postLaunchCheck();
 
-    preLaunchCheck();
-    cudaEventRecord(start_test_fringerotate2, 0);
-
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
-    FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
-    
-    cudaEventRecord(end_test_fringerotate2, 0);
-    cudaEventSynchronize(end_test_fringerotate2);
-    cudaEventElapsedTime(&(dtime_fringerotate2[i]), start_test_fringerotate2,
-			 end_test_fringerotate2);
-    postLaunchCheck();
-}
+  }
   // Do some statistics.
   (void)time_stats(dtime_fringerotate, arguments.nloops, &averagetime_fringerotate,
 		   &mintime_fringerotate, &maxtime_fringerotate);
