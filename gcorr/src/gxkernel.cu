@@ -66,8 +66,8 @@ __global__ void setFringeRotation(float *rotVec) {
   size_t iant = blockIdx.y;
   int numffts = blockDim.x * gridDim.x;
 
-  rotVec[iant*numffts + ifft*2] = 1e-6;
-  rotVec[iant*numffts + ifft*2+1] = 1e-12;
+  rotVec[iant*numffts*2 + ifft*2] = 1e-6;
+  rotVec[iant*numffts*2 + ifft*2+1] = 1e-12;
 }
 
 
