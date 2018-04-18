@@ -7,17 +7,13 @@
 #include <iomanip>
 #include <cstring>
 
-// FxKernel will operate on a single subband (dual pol), upper sideband, for the duration of one subintegration
-// Suggest we fix to use 2 bit real data, in 2's complement?  i.e., assume that the data itself has headers stripped etc
-//   - Ideally we would generate this by stripping out real data from e.g. VDIF files
-// Will we use pthread parallelisation to do time division multiplexing like in DiFX, or use something else? Or simply run multiple, 
-// completely independent instances of FxKernel (probably easier)?
-// Suggest that we force the nchan to be a power of 2 to make the striding complex multiplication for phase rotations easy
-// I'm also suggesting that we unpack directly to a complex array, to make the subsequent fringe rotation easier
+static cf32 lut2bit[256][4]; /**< Look up table for two bit data, will contain the 4 time samples corresponding to a given byte */
 
-static cf32 lut2bit[256][4];
-
-void initLUT2bitReal () {
+/**
+ *  Initialise the 2 bit look-up table
+ */
+void initLUT2bitReal ()
+{
   static const float HiMag = 3.3359;  // Optimal value
   const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
   
@@ -31,8 +27,8 @@ void initLUT2bitReal () {
   }
 }
 
-FxKernel::FxKernel(int nant, int nchan, int nfft, int numbits, double lo, double bw)
-  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), nbits(numbits), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
+FxKernel::FxKernel(int nant, int nchan, int nfft, int nbit, double lo, double bw)
+  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), nbits(nbit), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
 {
   iscomplex = 0; // Allow for further generalisation later
   if (iscomplex)
@@ -336,10 +332,18 @@ void FxKernel::process()
     int b = 0; // Baseline counter
     for(int j=0;j<numantennas-1;j++)
     {
-      if (!antValid[j]) continue;
+      if (!antValid[j])
+      {
+        b += (numantennas-(j+1));
+        continue;
+      }
       for(int k=j+1;k<numantennas;k++)
       {
-	if (!antValid[k]) continue;
+	if (!antValid[k]) 
+	{
+          b++;
+          continue;
+        }
 	
 	for(int l=0;l<2;l++)
 	{
@@ -350,7 +354,7 @@ void FxKernel::process()
 	  }
 	}
 	baselineCount[b]++;
-	b++;
+        b++;
       }
     }
   }

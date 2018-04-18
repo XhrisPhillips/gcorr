@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
   cudaEventCreate(&start_exec);
   cudaEventCreate(&stop_exec);
   
-  void init_2bitLevels();
+  init_2bitLevels();
 
   // load up the test input data and delays from the configfile
   parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
@@ -363,7 +363,7 @@ int main(int argc, char *argv[])
     // Unpack the data
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
-      unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+      unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
       CudaCheckError();
     }
 
@@ -389,14 +389,19 @@ int main(int argc, char *argv[])
 
     // Cross correlate
     gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
-    //cout << "Cross correlate" << endl;
-    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-    //CrossCorrShared<<<corrBlocks,corrThreads,numantennas*2*sizeof(cuComplex)>>>(channelisedData, baselineData, numantennas, nchunk);
-    CudaCheckError();
 
+/*
+    cout << "Cross correlate" << endl;
+    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+    CudaCheckError();
     // cout << "Finalise" << endl;
     finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum);
     CudaCheckError();
+*/
+    int ccblock_width = 128;
+    int nantxp = numantennas*2;
+    dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
+    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, nantxp, numffts, numchannels, fftchannels);
 
   }
   

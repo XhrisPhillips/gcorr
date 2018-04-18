@@ -1,0 +1,3 @@
+[submodule "ubench/gbench"]
+	path = ubench/google-benchmark
+	url = git@github.com:google/benchmark
