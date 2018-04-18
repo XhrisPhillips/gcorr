@@ -71,19 +71,24 @@ __global__ void setFringeRotation(float *rotVec) {
 }
 
 
-/* Fringe rotate a single antenna inplace, assuming dual pol data */
+/* Fringe rotate the data, using a linear phase slopre per input FFT. Assume 2 polarisations
+
+   threads * gridDim.x is size of FFT
+   grid.y   is number of FFTs
+   grid.z is number of Antennas
+ */
 
 __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   int fftsize = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
   size_t iant = blockIdx.z;
-  int numffts = blockDim.y * gridDim.y;
-  int subintsamples = numffts * fftsize * 2;
+  int numffts = gridDim.y;
+  int subintsamples = numffts * fftsize;
 
   // phase and slope for this FFT
-  float p0 = rotVec[iant*numffts + ifft*2];
-  float p1 = rotVec[iant*numffts + ifft*2+1];
+  float p0 = rotVec[iant*numffts*2 + ifft*2];
+  float p1 = rotVec[iant*numffts*2 + ifft*2+1];
   float theta = p0 + ichan*p1;
 
   // Should precompute sin/cos
@@ -125,8 +130,9 @@ void init_2bitLevels() {
    This is probably NOT suitable for the final system, just an initial place holder
    Specifically I think delay compersation needs to be done here
    Each thread unpacks 4 samples, 2 per channel (pol). Total number of threads should be
-  a factor of 2 smaller than numbwe of time samples (4 than total # samples).
+  a factor of 2 smaller than number of time samples (4x smakker than total # samples assuming 2 pols).
 */
+
 
 __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src) {
   static const float HiMag = 3.3359;  // Optimal value
@@ -140,6 +146,22 @@ __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src) {
   j++;
   dest[j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
   dest[subintsamples + j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
+}
+
+/* Unpack 16bit complex data (assumed to be 2's complement) to complex float
+   src data is assumed to have 2 channels (polarisations) interleaved.
+   Number of threads equal to twice the number subints (separate thread per pol)
+*/
+
+__global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src) {
+  const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
+  int subintsamples = blockDim.x * gridDim.x/2;
+
+  int ichan = i*2; // 2 bytes per complex sample
+  int pol = i % 2;
+  int ochan = i/2 + pol*subintsamples;
+
+  dest[ochan] = make_cuFloatComplex(src[ichan], src[ichan+1]);
 }
 
 __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src) {
@@ -183,9 +205,6 @@ __global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const 
   dest[a][j] = make_cuFloatComplex(levels_2bit[(src[i]>>4)&0x3], 0);
   dest[a+1][j] = make_cuFloatComplex(levels_2bit[(src[i]>>6)&0x3], 0);
 }
-
-
-
 
 /* Cross correlate and accumulate nant antenna data
 
@@ -252,18 +271,18 @@ __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int
   }
 }
 
-__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) { 
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum) { 
 
   int nchan = blockDim.x * gridDim.x;
   int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
   int prod = blockIdx.y;
   int b = blockIdx.z;
 
-  for (int i=1; i<nchunk; i++) {
+  for (int i=1; i<parallelAccum; i++) {
     cuCaddIf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)],
       accum[accumIdx(b, prod, ichan + i*nchan, nchan*parallelAccum)]);
   }
-  cuCdivCf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)], nchunk);
+  cuCdivCf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)], parallelAccum);
 }
 
 // Launched with antenna indices in block .y and .z.
