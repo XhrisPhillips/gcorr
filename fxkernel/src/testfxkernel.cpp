@@ -19,6 +19,7 @@ using std::vector;
 /** 
  * @file testfxkernel.cpp
  * @brief A test harness for fxkernel
+ * @see FxKernel
  *   
  * This test harness reads a brief and simple config file, then creates a single
  * FxKernel object and sets it up with the input data and delays, and then
