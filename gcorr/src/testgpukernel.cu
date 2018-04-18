@@ -212,8 +212,8 @@ int main(int argc, char *argv[])
 
   // Fringe Rotate
   int fringeThreads, blockchan;
-  if (numchannels<=NTHREADS) {
-    fringeThreads = numchannels;
+  if (fftchannels<=NTHREADS) {
+    fringeThreads = fftchannels;
     blockchan = 1;
   } else {
     fringeThreads = NTHREADS;
@@ -223,9 +223,23 @@ int main(int argc, char *argv[])
       exit(1);
     }
   }
-  // Fringe Rotation
   dim3 fringeBlocks = dim3(blockchan, numffts, numantennas);
-  
+
+  // Fractional Delay
+  int fracDelayThreads;
+  if (numchannels<=NTHREADS) {
+    fracDelayThreads = numchannels;
+    blockchan = 1;
+  } else {
+    fracDelayThreads = NTHREADS;
+    blockchan = numchannels/NTHREADS;
+    if (numchannels%NTHREADS) {
+      cerr << "Error: NTHREADS not divisible into fftchannels" << endl;
+      exit(1);
+    }
+  }
+  dim3 fracDelayBlocks = dim3(blockchan, numffts, numantennas);
+
   // CrossCorr
   int targetThreads = 50e4;  // This seems a *lot*
   int corrThreads;
@@ -311,6 +325,10 @@ int main(int argc, char *argv[])
       return(0);
     }
 
+    // Fractional Delay Correction
+    //FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData, fractionalDelayValues, numchannels, fftchannels, numffts, subintsamples);
+    //CudaCheckError();
+    
     // Cross correlate
     gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
 
