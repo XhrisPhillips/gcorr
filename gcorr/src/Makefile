@@ -14,7 +14,9 @@ SOURCES	= gxkernel.cu testgpukernel.cu benchmark_gxkernel.cu
 
 OBJECTS = $(SOURCES:.cu=.o)
 
-CUFLAGS	=
+CUFLAGS	= -I../../fxkernel/src/
+
+CFLAGS  = 
 
 CLINK	= -lcudart -lcufft -lcurand
 
@@ -22,7 +24,7 @@ CLINK	= -lcudart -lcufft -lcurand
 	$(NVCC) $(CUFLAGS) -c $<
 
 %.o : %.cpp
-	$(NVCC) $(CUFLAGS) -c $<
+	$(CC) $(CFLAGS) -c $<
 
 %.o : %.c
 #	$(CC) -c -O3 -ffast-math $<
