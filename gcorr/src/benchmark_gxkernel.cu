@@ -431,7 +431,7 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_fft, 0);
 
-    cufftPlan1d(&plan, (arguments.nchannels / 2), CUFFT_C2C,
+    cufftPlan1d(&plan, (arguments.nchannels * 2), CUFFT_C2C,
 		2 * arguments.nantennas * numffts);
     cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD);
     
