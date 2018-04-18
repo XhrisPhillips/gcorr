@@ -426,6 +426,8 @@ int main(int argc, char *argv[]) {
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
 		       parallelAccum * sizeof(cuComplex)));
+  gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
+		       arguments.nsamples * sizeof(cuComplex)));
   for (i = 0; i < arguments.nloops; i++) {
 
     preLaunchCheck();
