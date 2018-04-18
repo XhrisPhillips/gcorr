@@ -326,6 +326,7 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_fringerotate2, end_test_fringerotate2;
   dim3 FringeSetblocks, fringeBlocks;
   dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_fringerotate2 = (float *)malloc(arguments.nloops * sizeof(float));
   
   numffts = arguments.nsamples / arguments.nchannels;
   if (numffts % 8) {
