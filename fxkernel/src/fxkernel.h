@@ -4,31 +4,79 @@
 #include <ippcore.h>
 #include "vectordefs.h"
 
+/** 
+ * @class FxKernel
+ * @brief The class representing a kernel that will process radio interferometry data in an FX fashion to produce visibilities.
+ *   
+ * FxKernel encapsulates all the processing required to turn sampled voltage data from N datastreams into N*(N-1)/2 baselines
+ * of visibility data. It operates on a single upper sideband, dual polarisation, with interleaved data samples where the headers have been
+ * stripped out.
+ */
 class FxKernel{
 public:
-  FxKernel(int nant, int nchan, int nfft, int numbits, double localosc, double bw);
+  /**
+   * Constructor for the FxKernel object
+   * @param nant the number of antennas (set in this function).
+   * @param nchan the number of channels to be produced in the correlation 
+   * @param nfft the number of FFTs that will be processed in one subintegration 
+   * @param nbit the number of bits per sample
+   * @param localosc the local oscillator frequency in Hz 
+   * @param bw the bandwidth in Hz 
+   */
+  FxKernel(int nant, int nchan, int nfft, int nbit, double localosc, double bw);
+
+  /**
+   * Destructor for the FxKernel
+   */
   ~FxKernel();
+
+  /**
+   * Set the input (packed, quantised) data that will be processed
+   * @param idata arrays of packed, quantised voltage data (1 per antenna, containing data for the whole subintegration)
+   */
   void setInputData(u8 ** idata);
+
+  /**
+   * Set the delays and file start time information for each antenna
+   * @param d The delay polynomial info (one 2nd order polynomial per antenna
+   * @param f The offset in start time for each antenna relative to the start time of the subintegration at the array reference position
+   */
   void setDelays(double ** d, double * f);
+
+  /**
+   * Process one subintegration, turning voltages into visibilities
+   */
   void process();
+
+  /**
+   * Accumulate the subintegration results into a visibility vector
+   * @param odata visibility arrays [baseline][stokes][channel] that the subintegration results from this FxKernel will be accumulated into
+   */
   void accumulate(cf32 *** odata);
+
+  /**
+   * Write the subintegration results out into a file
+   * @param outfile The output file name
+   * @param runtimens The duration that the processing run took, in nanoseconds
+   * @param starttimestring A human-readable string that contains the time at which this run was started
+   */
   void saveVisibilities(const char * outfile, int runtimens, std::string starttimestring);
 
 private:
   /**
    * Method to unpack the coarsely quantised input data to complex floats
-   * @param inputdata an array of packed voltage data of length 1 byte 
+   * @param inputdata an array of packed voltage data per station
    * @param unpacked an array of unpacked voltage data; complex float with 32 bit real and 32 bit imaginary
-   * @param offset the offset from the start time of the data in number of samples
+   * @param offset the requested offset into the packed data from the start time of the data in number of samples
    */
   void unpack(u8 * inputdata, cf32 ** unpacked, int offset);
 
   /**
-   * Method to get the station delay for a given station for a given FFT
+   * Method to get the station delay information for a given station for a given FFT
    * @param antenna the current antenna being processed
    * @param fftindex index of FFT within one subint you want to process
    * @param meandelay the required time delay at the midpoint of the FFT interval in seconds
-   * @param a gradiant of delay with time; seconds per FFT interval
+   * @param a gradient of delay with time; seconds per FFT interval
    * @param b delay in seconds at the start of FFT interval
    */
   void getStationDelay(int antenna, int fftindex, double & meandelay, double & a, double & b);
@@ -36,7 +84,7 @@ private:
   /**
    * Method to fringe rotate the unpacked data in place
    * @param unpacked array of unpacked voltage data (complex 32bit float)
-   * @param a gradiant of delay with time; seconds per FFT interval
+   * @param a gradient of delay with time; seconds per FFT interval
    * @param b delay in seconds at the start of FFT interval
    */
   void fringerotate(cf32 ** unpacked, f64 a, f64 b);
