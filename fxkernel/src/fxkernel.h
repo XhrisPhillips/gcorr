@@ -92,14 +92,14 @@ private:
   /**
    * Method to channelise (FFT) the data, not in place
    * @param unpacked array of unpacked voltage data (complex 32bit float)
-   * @param array containing FFTed (channelised) unpacked data array (complex 32bit float)
+   * @param channelised array containing FFTed (channelised) unpacked data array (complex 32bit float)
    */
   void dofft(cf32 ** unpacked, cf32 ** channelised);
 
   /**
    * Method to calculate complex conjugate of the channelised data
    * @param channelised array containing FFTed (channelised) unpacked data array (complex 32bit float)
-   * @param complex conjugate of channelised data array
+   * @param conjchannels complex conjugate of channelised data array
    */
   void conjChannels(cf32 ** channelised, cf32 ** conjchannels);
 
