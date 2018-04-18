@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <iostream>
 #include <cassert>
 #include <cfloat>
 #include <complex>
@@ -122,7 +123,12 @@ void harness_accum(benchmark::State& state) {
     }
 
     cudaMemcpy(result.data(), gpu_result, result_bytes, cudaMemcpyDeviceToHost);
-    assert_near(expected, result, errbound);
+    try {
+        assert_near(expected, result, errbound);
+    }
+    catch (std::runtime_error& ex) {
+        state.SkipWithError(ex.what());
+    }
 
     cudaFree(gpu_data);
     cudaFree(gpu_result);
@@ -132,11 +138,13 @@ void harness_accum(benchmark::State& state) {
 }
 
 void with_custom_args(benchmark::internal::Benchmark* b) {
-    for (int n = 6; n<=6; n+=2) {
+    for (int n = 4; n<=20; n+=2) {
         for (int u = 3250; u<=3250; u<<=1) { // nfft
-            int m = 1024;
-            std::vector<int64_t> args = {n, u, m};
-            b->Args(args)->UseManualTime();
+            // Note: errors in gcorr_global with m = 256.
+            for (int m = 512; m<=4096; m<<=1) {
+                std::vector<int64_t> args = {n, u, m};
+                b->Args(args)->UseManualTime();
+            }
         }
     }
 }
@@ -145,8 +153,9 @@ void with_custom_args(benchmark::internal::Benchmark* b) {
 void wrap_##fn(benchmark::State& state) { harness_accum<fn>(state); }\
 BENCHMARK(wrap_##fn)->Apply(with_custom_args)->Unit(benchmark::kMicrosecond);
 
-BENCH_ACCUM(simple_horiz_accumulate);
 BENCH_ACCUM(gcorr_global_accumulate);
-BENCH_ACCUM(naive_accumulate);
+BENCH_ACCUM(simple_horiz_accumulate);
+//BENCH_ACCUM(naive_accumulate);
+//BENCH_ACCUM(gcorr_shared_accumulate);
 
 BENCHMARK_MAIN();

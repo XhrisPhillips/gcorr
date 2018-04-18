@@ -49,3 +49,24 @@ struct gcorr_global_accumulate {
     cfloat* baselineData = nullptr;
 };
 
+struct gcorr_shared_accumulate {
+    using cfloat = std::complex<float>;
+
+    gcorr_shared_accumulate(cfloat* out, const cfloat* data, int n, int r, int m):
+        out(out), data(data), n(n), r(r), m(m)
+    {
+        init();
+    }
+
+    void init();
+    cfloat* operator()();
+    ~gcorr_shared_accumulate();
+
+    cfloat* out;
+    const cfloat* data;
+    int n, r, m;
+
+    int parallelAccum = 0;
+    cfloat* baselineData = nullptr;
+};
+

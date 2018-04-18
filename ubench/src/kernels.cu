@@ -106,6 +106,12 @@ __device__ __inline__ void cuCaddIf(float2 *a, float2 b)
   (*a).y += b.y;
 }
 
+__device__ __inline__ void cuCaddIfAtomic(float2 *a, float2 b)
+{
+  atomicAdd(&a->x, b.x);
+  atomicAdd(&a->y, b.y);
+}
+
 // Multiply a complex number by the conjugate of the other
 __host__ __device__ static __inline__ float2 cuCmulConjf (float2 x, float2 y)
 {
@@ -132,9 +138,6 @@ void CrossCorr(const float2 *ants, float2 *accum, int nant, int nchunk) {
             for (j=i+1; j<nant; j++) {
                 cuCaddIf(&accum[accumIdx(b, ochan, nchan*parallelAccum)],
                         cuCmulConjf(ants[antIdx(i, ichan, subintsamples)], ants[antIdx(j, ichan, subintsamples)]));
-                if (ochan==0 && b==0) {
-                    auto a = accum[accumIdx(b, ochan, nchan*parallelAccum)];
-                }
                 b++;
             }
         }
@@ -142,8 +145,39 @@ void CrossCorr(const float2 *ants, float2 *accum, int nant, int nchunk) {
     }
 }
 
+__device__
+inline bool operator!=(float2 a, float2 b) { return a.x!=b.x || a.y!=b.y; }
+
+
 __global__
-void finaliseAccum(float2* out, float2 *accum, int parallelAccum, int nchunk) { 
+void CrossCorrShared(const float2 *ants, float2 *accum, int nant, int nchunk) {
+    extern __shared__ float2 antShar[];
+
+    int nchan = blockDim.x * gridDim.x;
+    size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk;
+    const size_t ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
+    int parallelAccum = blockDim.y * gridDim.y;
+    int subintsamples = parallelAccum * nchan * nchunk;
+
+    int i, j, l, b;
+    for (l=0; l<nchunk; l++) {
+        if (threadIdx.x<nant) antShar[threadIdx.x] = ants[antIdx(threadIdx.x, ichan, subintsamples)];
+        __syncthreads();
+
+        b=0;
+        for (i=0; i<nant-1; i++) {
+            for (j=i+1; j<nant; j++) {
+                cuCaddIf(&accum[accumIdx(b, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i], antShar[j]));
+                b++;
+            }
+        }
+        ichan += nchan;
+        __syncthreads();
+    }
+}
+
+__global__
+void finaliseAccum(float2* out, float2 *accum, int parallelAccum, int nchunk) {
     int nchan = blockDim.x * gridDim.x;
     int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
     int b = blockIdx.z;
@@ -155,6 +189,8 @@ void finaliseAccum(float2* out, float2 *accum, int parallelAccum, int nchunk) {
 }
 
 } // kernel
+
+// simple implementations
 
 cfloat* naive_accumulate::operator()() {
     unsigned block_width = 128;
@@ -173,6 +209,8 @@ cfloat* simple_horiz_accumulate::operator()() {
 
     return out;
 }
+
+// gcorr using global mem:
 
 void gcorr_global_accumulate::init() {
     // m corresponds to fftchannels; n to numantennas; r to subintsamples.
@@ -202,3 +240,38 @@ cfloat* gcorr_global_accumulate::operator()() {
 gcorr_global_accumulate::~gcorr_global_accumulate() {
     cudaFree(baselineData);
 }
+// gcorr using shared mem:
+
+void gcorr_shared_accumulate::init() {
+    // m corresponds to fftchannels; n to numantennas; r to subintsamples.
+    int targetThreads = 50e4;
+    parallelAccum = (int)ceil(targetThreads/m+1); // I suspect this has failure modes
+    while (parallelAccum && (r/m) % parallelAccum) parallelAccum--;
+
+    cudaMalloc(&baselineData, n*(n-1)/2*m*parallelAccum*sizeof(float2));
+}
+
+cfloat* gcorr_shared_accumulate::operator()() {
+    int corrThreads = 512;
+    int blockchan = m/512;
+    dim3 corrBlocks = dim3(blockchan, parallelAccum);
+    int numffts = r/m;
+    int nchunk = numffts / parallelAccum;
+
+    float2* abuf;
+    cudaMalloc(&abuf, n*sizeof(float2));
+
+    cudaMemset(baselineData, 0, n*(n-1)/2*m*parallelAccum*sizeof(float2));
+    kernel::CrossCorrShared<<<corrBlocks,corrThreads,n*sizeof(float2)>>>((const float2*)data, (float2*)baselineData, n, nchunk);
+
+    dim3 accumBlocks = dim3(blockchan, 1, n*(n-1)/2);
+    kernel::finaliseAccum<<<accumBlocks,corrThreads>>>((float2*)out, (float2*)baselineData, parallelAccum, nchunk);
+
+    cudaFree(abuf);
+    return out;
+}
+
+gcorr_shared_accumulate::~gcorr_shared_accumulate() {
+    cudaFree(baselineData);
+}
+

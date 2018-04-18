@@ -49,8 +49,8 @@ obj/%.o: %.cu
 	$(cuda-compile)
 
 clean:
-	rm -f obj/*.o obj/gbench/*.o
+	rm -f ubench obj/*.o obj/gbench/*.o
 
 realclean: clean
-	rm -f ubench libbench.a obj/*.d obj/gbemch/*.d
+	rm -f libbench.a obj/*.d obj/gbemch/*.d
 
