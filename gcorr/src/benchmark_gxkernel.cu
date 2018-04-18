@@ -319,6 +319,8 @@ int main(int argc, char *argv[]) {
   int numffts;
   float *dtime_fringerotate=NULL, averagetime_fringerotate = 0.0;
   float mintime_fringerotate = 0.0, maxtime_fringerotate = 0.0;
+  float *dtime_fringerotate2=NULL, averagetime_fringerotate2 = 0.0;
+  float mintime_fringerotate2 = 0.0, maxtime_fringerotate2 = 0.0;
   float *rotVec;
   cudaEvent_t start_test_fringerotate, end_test_fringerotate;
   dim3 FringeSetblocks, fringeBlocks;
@@ -340,6 +342,8 @@ int main(int argc, char *argv[]) {
   
   cudaEventCreate(&start_test_fringerotate);
   cudaEventCreate(&end_test_fringerotate);
+  cudaEventCreate(&start_test_fringerotate2);
+  cudaEventCreate(&end_test_fringerotate2);
 
   /* Allocate memory for the rotation vector. */
   gpuErrchk(cudaMalloc(&rotVec, arguments.nantennas * numffts * 2 * sizeof(float)));
@@ -362,18 +366,40 @@ int main(int argc, char *argv[]) {
     cudaEventElapsedTime(&(dtime_fringerotate[i]), start_test_fringerotate,
 			 end_test_fringerotate);
     postLaunchCheck();
-  }
+
+    preLaunchCheck();
+    cudaEventRecord(start_test_fringerotate2, 0);
+
+    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    
+    cudaEventRecord(end_test_fringerotate2, 0);
+    cudaEventSynchronize(end_test_fringerotate2);
+    cudaEventElapsedTime(&(dtime_fringerotate2[i]), start_test_fringerotate2,
+			 end_test_fringerotate2);
+    postLaunchCheck();
+}
   // Do some statistics.
   (void)time_stats(dtime_fringerotate, arguments.nloops, &averagetime_fringerotate,
 		   &mintime_fringerotate, &maxtime_fringerotate);
-  printf("\n==== ROUTINES: setFringeRotation + FringeRotate2 ====\n");
+  (void)time_stats(dtime_fringerotate2, arguments.nloops, &averagetime_fringerotate2,
+		   &mintime_fringerotate2, &maxtime_fringerotate2);
+  printf("\n==== ROUTINES: setFringeRotation + FringeRotate ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
 	 averagetime_fringerotate, mintime_fringerotate, maxtime_fringerotate, implied_time,
 	 ((implied_time * 1e3) / averagetime_fringerotate));
+  printf("\n==== ROUTINES: setFringeRotation + FringeRotate2 ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_fringerotate2, mintime_fringerotate2, maxtime_fringerotate2, implied_time,
+	 ((implied_time * 1e3) / averagetime_fringerotate2));
   cudaEventDestroy(start_test_fringerotate);
   cudaEventDestroy(end_test_fringerotate);
+  cudaEventDestroy(start_test_fringerotate2);
+  cudaEventDestroy(end_test_fringerotate2);
 #endif
   
 }
