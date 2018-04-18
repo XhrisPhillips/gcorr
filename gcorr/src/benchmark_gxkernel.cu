@@ -336,7 +336,7 @@ int main(int argc, char *argv[]) {
   // Do some statistics.
   (void)time_stats(dtime_fringerotate, arguments.nloops, &averagetime_fringerotate,
 		   &mintime_fringerotate, &maxtime_fringerotate);
-  printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
+  printf("\n==== ROUTINES: setFringeRotation + FringeRotate2 ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
