@@ -385,10 +385,15 @@ int main(int argc, char *argv[])
     // cout << "Finalise" << endl;
     finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum, nchunk);
     CudaCheckError();
-#else
+#elif 0
     int ccblock_width = 128;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, numantennas-1, numantennas-1);
-    CrossCorrAccumHoriz<2><<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftchannels);
+    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftchannels);
+#else
+    int ccblock_width = 128;
+    int nantxp = numantennas*2;
+    dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
+    CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftchannels);
 #endif
   }
   

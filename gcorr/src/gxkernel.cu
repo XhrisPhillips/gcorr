@@ -358,8 +358,7 @@ __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) {
 }
 
 // Launched with antenna indices in block .y and .z.
-// Accumulates over first nchan entries in each fftwidth-wide block.
-template <int npol>
+// (Turns out having the pol loop in the kernel performs poorly!)
 __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
     int t = threadIdx.x+blockIdx.x*blockDim.x;
     if (t>=nchan) return;
@@ -376,8 +375,8 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
     int s = nfft*fftwidth;
 
-    for (int pi = 0; pi<npol; ++pi) {
-	for (int pj = 0; pj<npol; ++pj) {
+    for (int pi = 0; pi<2; ++pi) {
+	for (int pj = 0; pj<2; ++pj) {
 	    const float2* iv = &ants[antIdx(i, pi, t, s)];
 	    const float2* jv = &ants[antIdx(j, pj, t, s)];
 
@@ -397,13 +396,56 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
 	    a.x /= nfft;
 	    a.y /= nfft;
-	    accum[accumIdx(b, pi*npol+pj, t, nchan)] = a;
+	    accum[accumIdx(b, pi*2+pj, t, nchan)] = a;
 	}
     }
 }
 
-template __global__ void CrossCorrAccumHoriz<1>(cuComplex*, const cuComplex*, int, int, int, int);
-template __global__ void CrossCorrAccumHoriz<2>(cuComplex*, const cuComplex*, int, int, int, int);
+__global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+    int t = threadIdx.x+blockIdx.x*blockDim.x;
+    if (t>=nchan) return;
+
+    // blockIdx.y: index of first vector (2*antennaindex+polindex)
+    // blockIdx.z: index delta to second vector, minus 1.
+    int ii = blockIdx.y;
+    int ij = blockIdx.z;
+
+    ij += ii+1;
+
+    int ai = ii/2;
+    int aj = ij/2;
+
+    if (ai>=aj || ai>=nant || aj>=nant) return;
+
+    int pi = ii%2;
+    int pj = ij%2;
+
+    // index into output vector blocks: = (j-i-1) + n-1 + ... + n-i
+    int b = 4*(ai*nant-ai*(ai+1)/2 + aj-ai-1)+2*pi+pj;
+
+    int s = nfft*fftwidth;
+
+    const float2* iv = ants+ii*s+t;
+    const float2* jv = ants+ij*s+t;
+
+    float2 u = iv[0];
+    float2 v = jv[0];
+    float2 a;
+    a.x = u.x*v.x + u.y*v.y;
+    a.y = u.y*v.x - u.x*v.y;
+
+    for (int k = fftwidth; k<s; k += fftwidth) {
+        u = iv[k];
+        v = jv[k];
+
+        a.x += u.x*v.x + u.y*v.y;
+        a.y += u.y*v.x - u.x*v.y;
+    }
+
+    a.x /= nfft;
+    a.y /= nfft;
+    accum[b*nchan+t] = a;
+}
 
 __global__ void printArray(cuComplex *a) {
   int i = threadIdx.x;
