@@ -114,7 +114,7 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
 
 inline float carg(const cuComplex& z) {return atan2(cuCimagf(z), cuCrealf(z));} // polar angle
 
-void saveVisibilities(const char *outfile, cuComplex *baselines, int nbaseline, int nchan, int parallelAccum, double bandwidth) {
+void saveVisibilities(const char *outfile, cuComplex *baselines, int nbaseline, int nchan, int stride, double bandwidth) {
   cuComplex **vis;
   std::ofstream fvis(outfile);
 
@@ -122,7 +122,7 @@ void saveVisibilities(const char *outfile, cuComplex *baselines, int nbaseline, 
   vis = new cuComplex*[nbaseline*4];
   for (int i=0; i<nbaseline*4; i++) {
     vis[i] = new cuComplex[nchan];
-    gpuErrchk(cudaMemcpy(vis[i], &baselines[i*nchan*parallelAccum], nchan*sizeof(cuComplex), cudaMemcpyDeviceToHost));
+    gpuErrchk(cudaMemcpy(vis[i], &baselines[i*stride], nchan*sizeof(cuComplex), cudaMemcpyDeviceToHost));
   }
   
   for (int c=0; c<nchan; c++) {
@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
 
   cout << "Total execution time for " << arguments.nloops << " loops =  " <<  dtime << " ms" << endl;
 
-  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, parallelAccum, bandwidth);
+  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, numffts*numchannels, bandwidth);
 
   cudaDeviceSynchronize();
   cudaDeviceReset();
