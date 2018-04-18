@@ -323,6 +323,7 @@ int main(int argc, char *argv[]) {
   float mintime_fringerotate2 = 0.0, maxtime_fringerotate2 = 0.0;
   float *rotVec;
   cudaEvent_t start_test_fringerotate, end_test_fringerotate;
+  cudaEvent_t start_test_fringerotate2, end_test_fringerotate2;
   dim3 FringeSetblocks, fringeBlocks;
   dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
   
