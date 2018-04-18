@@ -254,7 +254,7 @@ int main(int argc, char *argv[])
   cudaEventCreate(&start_exec);
   cudaEventCreate(&stop_exec);
   
-  void init_2bitLevels();
+  init_2bitLevels();
 
   // load up the test input data and delays from the configfile
   parseConfig(configfile, nbit, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays);
