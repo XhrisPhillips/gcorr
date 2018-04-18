@@ -312,7 +312,7 @@ int main(int argc, char *argv[])
       if (nbit==2 && !iscomplex) {
 	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
       } else if (nbit==8 && iscomplex) {
-	//unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+	unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
       }
       CudaCheckError();
     }
