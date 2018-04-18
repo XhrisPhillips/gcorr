@@ -61,7 +61,7 @@ void freeMem() {
 }
 
 /* Calculate the starting fringe rotation phase and phase increment for each FFT of each antenna, and the fractional sample error */
-__global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double sampletime, int fftsamples, float * rotationPhaseInfo, int *sampleShifts, float* fractionalSampleDelays)
+__global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double sampletime, int fftsamples, int fftchannels, float * rotationPhaseInfo, int *sampleShifts, float* fractionalSampleDelays)
 {
   size_t ifft = threadIdx.x + blockIdx.x * blockDim.x;
   size_t iant = blockIdx.y;
@@ -93,7 +93,7 @@ __global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double s
   sampleShifts[iant*numffts + ifft] = netdelaysamples;
 
   // Save the fractional delay
-  fractionaldelay = (float)(-(netdelaysamples_f - netdelaysamples)*sampletime);  // seconds
+  fractionaldelay = (float)(-(netdelaysamples_f - netdelaysamples)*2*M_PI/fftchannels);  // radians per FFT channel
   fractionalSampleDelays[iant*numffts + ifft] = fractionaldelay;
 
   // set the fringe rotation phase for the first sample of a given FFT of a given antenna
