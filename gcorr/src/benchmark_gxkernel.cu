@@ -301,7 +301,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Work out the block and thread numbers.
-  fringeBlocks = dim3(arguments.nchannels, numffts, arguments.nantennas);
+  fringeBlocks = dim3((arguments.nchannels / arguments.nthreads), numffts, arguments.nantennas);
   FringeSetblocks = dim3(8, arguments.nantennas);
   printf("\n\nEach fringe rotation test will run:\n");
   printf("  nsamples = %d\n", arguments.nsamples);
@@ -325,7 +325,7 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start_test_fringerotate, 0);
 
     setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
-    FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    FringeRotate<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
     
     cudaEventRecord(end_test_fringerotate, 0);
     cudaEventSynchronize(end_test_fringerotate);
