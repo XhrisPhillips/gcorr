@@ -268,46 +268,54 @@ __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) {
 }
 
 // Launched with antenna indices in block .y and .z.
-// nantxp = nant times #polarizations.
-// Treats each input vector (corresponding to an antenna and polarization) indepdentently.
 // Accumulates over first nchan entries in each fftwidth-wide block.
-__global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nantxp, int nfft, int nchan, int fftwidth) {
+template <int npol>
+__global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
     int t = threadIdx.x+blockIdx.x*blockDim.x;
     if (t>=nchan) return;
 
     // input vector indices in block .y and .z
     int i = blockIdx.y;
     int j = blockIdx.z;
-
     j += i+1;
-    if (i>=nantxp || j>=nantxp) return;
+
+    if (i>=nant || j>=nant) return;
 
     // index into output vectors: = (j-i-1) + n-1 + ... + n-i
-    int b = i*nantxp-i*(i+1)/2 + j-i-1;
+    int b = i*nant-i*(i+1)/2 + j-i-1;
+    b *= npol*npol;
 
     int r = nfft*nchan;
 
-    const float2* iv = ants+i*r+t;
-    const float2* jv = ants+j*r+t;
+    for (int pi = 0; pi<npol; ++pi) {
+	for (int pj = 0; pj<npol; ++pj) {
+	    const float2* iv = ants+(i*npol+pi)*r+t;
+	    const float2* jv = ants+(j*npol+pj)*r+t;
 
-    float2 u = iv[0];
-    float2 v = jv[0];
-    float2 a;
-    a.x = u.x*v.x + u.y*v.y;
-    a.y = u.y*v.x - u.x*v.y;
+	    float2 u = iv[0];
+	    float2 v = jv[0];
+	    float2 a;
+	    a.x = u.x*v.x + u.y*v.y;
+	    a.y = u.y*v.x - u.x*v.y;
 
-    for (int k = fftwidth; k<r; k += fftwidth) {
-        u = iv[k];
-        v = jv[k];
+	    for (int k = fftwidth; k<r; k += fftwidth) {
+		u = iv[k];
+		v = jv[k];
 
-        a.x += u.x*v.x + u.y*v.y;
-        a.y += u.y*v.x - u.x*v.y;
+		a.x += u.x*v.x + u.y*v.y;
+		a.y += u.y*v.x - u.x*v.y;
+	    }
+
+	    a.x /= nfft;
+	    a.y /= nfft;
+	    accum[b*nchan+t] = a;
+	    ++b;
+	}
     }
-
-    a.x /= nfft;
-    a.y /= nfft;
-    accum[b*nchan+t] = a;
 }
+
+template __global__ void CrossCorrAccumHoriz<1>(cuComplex*, const cuComplex*, int, int, int, int);
+template __global__ void CrossCorrAccumHoriz<2>(cuComplex*, const cuComplex*, int, int, int, int);
 
 __global__ void printArray(cuComplex *a) {
   int i = threadIdx.x;
