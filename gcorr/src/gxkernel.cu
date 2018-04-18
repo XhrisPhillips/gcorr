@@ -157,7 +157,7 @@ __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src) {
   // I have also implemented the use of constant memory for the levels_2bit
   // array
   dest[j] = make_cuFloatComplex(kLevels_2bit[src_i&0x3], 0);
-  dest[j+1] = make_cuFloatComplex(kLevels_2bit[src_i&0x3>>4], 0);
+  dest[j+1] = make_cuFloatComplex(kLevels_2bit[(src_i>>4)&0x3], 0);
 
   dest[subintsamples + j] = make_cuFloatComplex(kLevels_2bit[(src_i>>2)&0x3], 0);
   dest[subintsamples + j + 1] = make_cuFloatComplex(kLevels_2bit[(src_i>>6)&0x3], 0);
