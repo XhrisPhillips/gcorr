@@ -32,7 +32,7 @@ public:
 
   /**
    * Set the input (packed, quantised) data that will be processed
-   * @param inputdata arrays of packed, quantised voltage data (1 per antenna, containing data for the whole subintegration)
+   * @param idata arrays of packed, quantised voltage data (1 per antenna, containing data for the whole subintegration)
    */
   void setInputData(u8 ** idata);
 
