@@ -251,6 +251,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_unpack3, 0);
     for (j = 0; j < arguments.nantennas; j++) {
+      init_2bitLevels();
       unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(unpacked2[j], packedData[j]);
     }
     cudaEventRecord(end_test_unpack3, 0);
