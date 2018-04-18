@@ -18,9 +18,6 @@ CUFLAGS	=
 
 CLINK	= -lcudart -lcufft -lcurand
 
-debug: NVCC += $(NVDEBUG)
-debug: all
-
 %.o : %.cu
 	$(NVCC) $(CUFLAGS) -c $<
 
@@ -29,6 +26,9 @@ debug: all
 	$(CC) -c  $<
 
 all: $(EXECS)
+
+debug: NVCC += $(NVDEBUG)
+debug: all
 
 testgpukernel : gxkernel.cu testgpukernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
