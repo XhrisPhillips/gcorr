@@ -78,11 +78,13 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
 		  cuComplex **channelisedData, cuComplex **baselineData, 
-		  float **rotVec, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum) {
-  
+		  float **rotationPhaseInfo, float **fractionalSampleDelays, int **sampleShifts, 
+                  double **gpuDelays, int numantenna, int subintsamples, int nbit, 
+                  int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum)
+{
   unsigned long long GPUalloc = 0;
 
-  int packedBytes = subintsamples*nbit*nPol/8;
+  int packedBytes = (subintsamples+nchan*2)*nbit*nPol/8; // Allow a little extra for delay shift
   *packedData = new int8_t*[numantenna];
   
   for (int i=0; i<numantenna; i++) {
@@ -105,9 +107,21 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
   gpuErrchk(cudaMalloc(baselineData, nbaseline*4*nchan*parallelAccum*sizeof(cuComplex)));
   GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
 
-  // Fringe rotation vector
-  gpuErrchk(cudaMalloc(rotVec, numantenna*numffts*2*sizeof(float)));
+  // Fringe rotation vector (will contain starting phase and phase increment for every FFT of every antenna)
+  gpuErrchk(cudaMalloc(rotationPhaseInfo, numantenna*numffts*2*sizeof(float)));
   GPUalloc += numantenna*numffts*2*sizeof(float);
+
+  // Fractional sample delay vector (will contain midpoint fractional sample delay for every FFT of every antenna)
+  gpuErrchk(cudaMalloc(fractionalSampleDelays, numantenna*numffts*sizeof(float)));
+  GPUalloc += numantenna*numffts*sizeof(float);
+
+  // Sample shifts vector (will contain the integer sample shift relative to nominal FFT start for every FFT of every antenna)
+  gpuErrchk(cudaMalloc(sampleShifts, numantenna*numffts*sizeof(int)));
+  GPUalloc += numantenna*numffts*sizeof(int);
+
+  // Delay information vectors
+  gpuErrchk(cudaMalloc(gpuDelays, numantenna*4*sizeof(double)));
+  GPUalloc += numantenna*4*sizeof(double);
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
@@ -153,13 +167,16 @@ int main(int argc, char *argv[])
   double * antfileoffsets; /**< offset from each the nominal start time of the integration for each antenna data file.  
                                 In units of seconds. */
   int numchannels, numantennas, nbaseline, numffts, nbit;
-  double lo, bandwidth;
+  double lo, bandwidth, sampletime, subinttime;
   bool iscomplex;
   vector<string> antennas, antFiles;
   vector<std::ifstream *> antStream;
 
   int8_t **packedData;
-  float *rotVec;
+  float *rotationPhaseInfo;
+  float *fractionalSampleDelays;
+  int *sampleShifts;
+  double *gpuDelays;
   cuComplex *unpackedData, *channelisedData, *baselineData;
   cufftHandle plan;
   cudaEvent_t start_exec, stop_exec;
@@ -197,10 +214,10 @@ int main(int argc, char *argv[])
   int subintsamples = numffts*fftchannels;  // Number of time samples - need to factor # channels (pols) also
   cout << "Subintsamples= " << subintsamples << endl;
 
-  float sampleTime = 1/bandwidth;
-  if (!iscomplex) sampleTime /= 2; 
-  float subintTime = subintsamples*sampleTime;
-  cout << "Subint = " << subintTime*1000 << " msec" << endl;
+  sampletime = 1.0/bandwidth;
+  if (!iscomplex) sampletime /= 2.0; 
+  subinttime = subintsamples*sampletime;
+  cout << "Subint = " << subinttime*1000 << " msec" << endl;
 
   // Setup threads and blocks for the various kernels
   // Unpack
@@ -279,7 +296,8 @@ int main(int argc, char *argv[])
 
   // Allocate space on the GPU
   allocDataGPU(&packedData, &unpackedData, &channelisedData,
-	       &baselineData, &rotVec, numantennas, subintsamples,
+	       &baselineData, &rotationPhaseInfo, &fractionalSampleDelays, &sampleShifts,
+               &gpuDelays, numantennas, subintsamples,
 	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum);
 
   for (int i=0; i<numantennas; i++) {
@@ -301,33 +319,48 @@ int main(int argc, char *argv[])
     gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
   }
 
+  // Copy delays to GPU
+  cout << "Copy delays to GPU" << endl;
+  for (int i=0; i<numantennas; i++) {
+    gpuErrchk(cudaMemcpy(&(gpuDelays[i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(&(gpuDelays[i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice));
+  }
+
+  // Check that the number of FFTs is a valid number
+  if (numffts%8)
+  {
+    cerr << "Error: numffts must be divisible by 8" << endl;
+    exit(1);
+  }
+  // Set the number of blocks for fringe rotation (and fractional sample delay?)
+  dim3 FringeSetblocks = dim3(8, numantennas);
+
+  // Record the start time
   cudaEventRecord(start_exec, 0);
-  for (int l=0; l<arguments.nloops; l++) {
-  
-    // Set the delays //
+  for (int l=0; l<arguments.nloops; l++)
+  {
+    // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
+    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftchannels, rotationPhaseInfo, 
+                                                             sampleShifts, fractionalSampleDelays);
+    CudaCheckError();
 
     // Unpack the data
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
       if (nbit==2 && !iscomplex) {
-	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]));
       } else if (nbit==8 && iscomplex) {
 	unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
       }
       CudaCheckError();
     }
 
-    // Fringe Rotate //
+    /*// Fringe Rotate //
     //cout << "Fringe Rotate" << endl;
-    if (numffts%8) {
-      cerr << "Error: numffts must be divisible by 8" << endl;
-      exit(1);
-    }
-    dim3 FringeSetblocks = dim3(8, numantennas);
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
-    CudaCheckError();
+    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotationPhaseInfo);
+    CudaCheckError();*/
 
-    FringeRotate<<<fringeBlocks,fringeThreads>>>(unpackedData, rotVec);
+    FringeRotate<<<fringeBlocks,fringeThreads>>>(unpackedData, rotationPhaseInfo);
     CudaCheckError();
   
     // FFT

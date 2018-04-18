@@ -148,7 +148,18 @@ int main(int argc, char *argv[]) {
 
   // Always discard the first trial.
   arguments.nloops += 1;
-  
+
+  // Calculate the number of FFTs  
+  int numffts = arguments.nsamples / arguments.nchannels;
+  if (arguments.complexdata == 0)
+  {
+    numffts /= 2;
+  }
+  if (numffts % 8) {
+    printf("Unable to proceed, numffts must be divisible by 8!\n");
+    exit(0);
+  }
+
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
   /*
@@ -157,6 +168,7 @@ int main(int argc, char *argv[]) {
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpackedData, *unpackedData2;
   int8_t **packedData, **packedData8;
+  int32_t *sampleShift;
   float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL, *dtime_unpack4=NULL; 
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
@@ -183,13 +195,16 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaMalloc(&packedData[i], packedBytes));
     gpuErrchk(cudaMalloc(&packedData8[i], packedBytes8));
   }
-
   for (i = 0; i < arguments.nantennas * npolarisations; i++) {
     gpuErrchk(cudaMalloc(&unpacked[i], arguments.nsamples * sizeof(cuComplex)));
   }
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
   gpuErrchk(cudaMalloc(&unpackedData2, arguments.nantennas * npolarisations * arguments.nsamples * sizeof(cuComplex)));
+
+  /* Allocate memory for the sample shifts vector */
+  gpuErrchk(cudaMalloc(&sampleShift, arguments.nantennas * numffts * sizeof(int)));
+  gpuErrchk(cudaMemset(sampleShift, 0, arguments.nantennas * numffts * sizeof(int)));
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
   printf("Each unpacking test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
@@ -257,7 +272,7 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start_test_unpack3, 0);
     for (j = 0; j < arguments.nantennas; j++) {
       init_2bitLevels();
-      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], sampleShift);
     }
     cudaEventRecord(end_test_unpack3, 0);
     cudaEventSynchronize(end_test_unpack3);
@@ -340,7 +355,6 @@ int main(int argc, char *argv[]) {
   cuComplex *unpackedFR;
   /* A suitable array has already been defined and populated. */
   unpackedFR = unpackedData2;
-  int numffts;
   float *dtime_fringerotate=NULL, averagetime_fringerotate = 0.0;
   float mintime_fringerotate = 0.0, maxtime_fringerotate = 0.0;
   float *dtime_fringerotate2=NULL, averagetime_fringerotate2 = 0.0;
@@ -352,12 +366,6 @@ int main(int argc, char *argv[]) {
   dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_fringerotate2 = (float *)malloc(arguments.nloops * sizeof(float));
   
-  numffts = arguments.nsamples / (2 * arguments.nchannels);
-  if (numffts % 8) {
-    printf("Unable to proceed, numffts must be divisible by 8!\n");
-    exit(0);
-  }
-
   // Work out the block and thread numbers.
   fringeBlocks = dim3((arguments.nchannels / arguments.nthreads), numffts, arguments.nantennas);
   FringeSetblocks = dim3(8, arguments.nantennas);
@@ -378,7 +386,7 @@ int main(int argc, char *argv[]) {
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
   curandGenerateUniform(gen, rotVec, arguments.nantennas * numffts * 2);
   curandDestroyGenerator(gen);
-    
+
   for (i = 0; i < arguments.nloops; i++) {
     
     preLaunchCheck();
