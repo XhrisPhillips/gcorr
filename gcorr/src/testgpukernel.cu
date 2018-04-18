@@ -348,7 +348,7 @@ int main(int argc, char *argv[])
     // Unpack the data
     cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
-      unpack2bit_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+      unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
       CudaCheckError();
     }
 
