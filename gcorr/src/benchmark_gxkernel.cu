@@ -409,6 +409,7 @@ int main(int argc, char *argv[]) {
   cuComplex *channelisedData, *baselineData;
   int nbaseline = arguments.nantennas * (arguments.nantennas - 1) / 2;
   int parallelAccum = (int)ceil(arguments.nthreads / arguments.nchannels + 1);
+  int rc;
   while (parallelAccum && numffts % parallelAccum) parallelAccum--;
   if (parallelAccum == 0) {
     printf("Error: can not determine block size for the cross correlator!\n");
@@ -434,9 +435,9 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_fft, 0);
 
-    if (cufftPlan1d(&plan, (arguments.nchannels * 2), CUFFT_C2C,
+    if (rc = cufftPlan1d(&plan, (arguments.nchannels * 2), CUFFT_C2C,
 		    2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
-      printf("FFT planning failed!\n");
+      printf("FFT planning failed! %d\n", rc);
       exit(0);
     }
     if (cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
