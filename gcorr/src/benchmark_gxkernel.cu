@@ -321,14 +321,14 @@ int main(int argc, char *argv[]) {
   dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_fringerotate2 = (float *)malloc(arguments.nloops * sizeof(float));
   
-  numffts = arguments.nsamples / arguments.nchannels;
+  numffts = arguments.nsamples / (2 * arguments.nchannels);
   if (numffts % 8) {
     printf("Unable to proceed, numffts must be divisible by 8!\n");
     exit(0);
   }
 
   // Work out the block and thread numbers.
-  fringeBlocks = dim3((arguments.nchannels / (2 *arguments.nthreads)), numffts, arguments.nantennas);
+  fringeBlocks = dim3((arguments.nchannels / arguments.nthreads), numffts, arguments.nantennas);
   FringeSetblocks = dim3(8, arguments.nantennas);
   printf("\n\nEach fringe rotation test will run:\n");
   printf("  nsamples = %d\n", arguments.nsamples);
@@ -353,7 +353,7 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_fringerotate2, 0);
 
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    //setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
     FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
     
     cudaEventRecord(end_test_fringerotate2, 0);
@@ -365,7 +365,7 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_fringerotate, 0);
 
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    //setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
     FringeRotate<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
     
     cudaEventRecord(end_test_fringerotate, 0);
@@ -380,13 +380,13 @@ int main(int argc, char *argv[]) {
 		   &mintime_fringerotate, &maxtime_fringerotate);
   (void)time_stats(dtime_fringerotate2, arguments.nloops, &averagetime_fringerotate2,
 		   &mintime_fringerotate2, &maxtime_fringerotate2);
-  printf("\n==== ROUTINES: setFringeRotation + FringeRotate ====\n");
+  printf("\n==== ROUTINES: FringeRotate ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
 	 averagetime_fringerotate, mintime_fringerotate, maxtime_fringerotate, implied_time,
 	 ((implied_time * 1e3) / averagetime_fringerotate));
-  printf("\n==== ROUTINES: setFringeRotation + FringeRotate2 ====\n");
+  printf("\n==== ROUTINES: FringeRotate2 ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
@@ -409,26 +409,41 @@ int main(int argc, char *argv[]) {
   cuComplex *channelisedData, *baselineData;
   int nbaseline = arguments.nantennas * (arguments.nantennas - 1) / 2;
   int parallelAccum = (int)ceil(arguments.nthreads / arguments.nchannels + 1);
+  int rc;
   while (parallelAccum && numffts % parallelAccum) parallelAccum--;
   if (parallelAccum == 0) {
     printf("Error: can not determine block size for the cross correlator!\n");
     exit(0);
   }
-  
+  dtime_fft = (float *)malloc(arguments.nloops * sizeof(float));
+
   cudaEventCreate(&start_test_fft);
   cudaEventCreate(&end_test_fft);
 
+  printf("\n\nEach fringe rotation test will run:\n");
+  printf("  parallelAccum = %d\n", parallelAccum);
+  printf("  nbaselines = %d\n", nbaseline);
+  
+  
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
 		       parallelAccum * sizeof(cuComplex)));
+  gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
+		       arguments.nsamples * sizeof(cuComplex)));
   for (i = 0; i < arguments.nloops; i++) {
 
     preLaunchCheck();
     cudaEventRecord(start_test_fft, 0);
-
-    cufftPlan1d(&plan, (arguments.nchannels / 2), CUFFT_C2C,
-		2 * arguments.nantennas * numffts);
-    cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD);
+    printf("i = %d\n", i);
+    if (rc = cufftPlan1d(&plan, arguments.nchannels, CUFFT_C2C,
+		    2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
+      printf("FFT planning failed! %d\n", rc);
+      exit(0);
+    }
+    if (cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+      printf("FFT execution failed!\n");
+      exit(0);
+    }
     
     cudaEventRecord(end_test_fft, 0);
     cudaEventSynchronize(end_test_fft);
