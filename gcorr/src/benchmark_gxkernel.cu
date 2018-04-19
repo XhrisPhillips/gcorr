@@ -258,16 +258,10 @@ int main(int argc, char *argv[]) {
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
   for (i = 0; i < arguments.nantennas; i++) {
     curandGenerateUniform(gen, (float*)packedData[i], packedBytes * (sizeof(int8_t) / sizeof(float)));
-    printf("check 1\n");
-    preLaunchCheck();
     curandGenerateUniform(gen, (float*)packedData8[i], packedBytes8 * (sizeof(int8_t) / sizeof(float)));
-    printf("check 2\n");
-    preLaunchCheck();
   }
   curandDestroyGenerator(gen);
-  printf("check 3\n");
 
-  preLaunchCheck();
   for (i = 0; i < arguments.nloops; i++) {
     if (arguments.verbose) {
       printf("\nLOOP %d\n", i);
@@ -277,6 +271,8 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     if (arguments.verbose) {
       printf("  RUNNING DELAY KERNEL...");
+      printf("   blocks = x: %d y: %d\n", FringeSetblocks.x, FringeSetblocks.y);
+      printf("   threads = %d\n", numffts / 8);
     }
     cudaEventRecord(start_test_delaycalc, 0);
     calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
