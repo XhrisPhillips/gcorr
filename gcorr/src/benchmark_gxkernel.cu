@@ -124,7 +124,7 @@ float timerEnd(struct timerCollection *tc) {
   int nint = tc->numIterations[ct];
   tc->timerResults[ct] = (float *)realloc(tc->timerResults[ct],
 					  nint * sizeof(float));
-  cudaEventElapsedTime(&(tc->timerResults[ct][nint]),
+  cudaEventElapsedTime(&(tc->timerResults[ct][nint - 1]),
 		       tc->startTime, tc->endTime);
   
 
