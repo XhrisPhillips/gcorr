@@ -573,15 +573,19 @@ int main(int argc, char *argv[]) {
    * combination.
    */
   cudaEvent_t start_test_crosscorr, end_test_crosscorr;
+  cudaEvent_t start_test_crosscorr2, end_test_crosscorr2;
   cudaEvent_t start_test_accum, end_test_accum;
   float *dtime_crosscorr=NULL, averagetime_crosscorr = 0.0;
   float mintime_crosscorr = 0.0, maxtime_crosscorr = 0.0;
+  float *dtime_crosscorr2=NULL, averagetime_crosscorr2 = 0.0;
+  float mintime_crosscorr2 = 0.0, maxtime_crosscorr2 = 0.0;
   float *dtime_accum=NULL, averagetime_accum = 0.0;
   float mintime_accum = 0.0, maxtime_accum = 0.0;
   int corrThreads, blockchan, nchunk, ccblock_width = 128;
   cuComplex *baselineData;
   dim3 corrBlocks, accumBlocks, ccblock;
   dtime_crosscorr = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_crosscorr2 = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_accum = (float *)malloc(arguments.nloops * sizeof(float));
   
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
@@ -635,6 +639,17 @@ int main(int argc, char *argv[]) {
     cudaEventElapsedTime(&(dtime_accum[i]), start_test_accum,
 			 end_test_accum);
     postLaunchCheck();
+
+    preLaunchCheck();
+    cudaEventRecord(start_test_crosscorr2, 0);
+    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
+						    arguments.nantennas, numffts,
+						    arguments.nchannels, fftchannels);
+    cudaEventRecord(end_test_crosscorr2, 0);
+    cudaEventSynchronize(end_test_crosscorr2);
+    cudaEventElapsedTime(&(dtime_crosscorr2[i]), start_test_crosscorr2,
+			 end_test_crosscorr2);
+    postLaunchCheck();
     
   }
   // Do some statistics.
@@ -654,6 +669,14 @@ int main(int argc, char *argv[]) {
 	 (arguments.nloops - 1),
 	 averagetime_accum, mintime_accum, maxtime_accum, implied_time,
 	 ((implied_time * 1e3) / averagetime_accum));
+  (void)time_stats(dtime_crosscorr2, arguments.nloops, &averagetime_crosscorr2,
+		   &mintime_crosscorr2, &maxtime_crosscorr2);
+  printf("\n==== ROUTINES: CrossCorrAccumHoriz ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_crosscorr2, mintime_crosscorr2, maxtime_crosscorr2, implied_time,
+	 ((implied_time * 1e3) / averagetime_crosscorr2));
 
   
   cudaEventDestroy(start_test_crosscorr);
