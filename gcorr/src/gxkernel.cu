@@ -240,10 +240,10 @@ __global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src, cons
 __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const int32_t *shifts, const int32_t fftsamples) {
   // static const float HiMag = 3.3359;  // Optimal value
   // const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
-  const size_t isample = 2*(blockDim.x * blockIdx.x + threadIdx.x);
   const size_t ifft = blockIdx.y;
+  const size_t isample = 2*(blockDim.x * blockIdx.x + threadIdx.x) + ifft*fftsamples;
   int subintsamples = fftsamples * gridDim.y;
-  int8_t src_i = src[(ifft*fftsamples - shifts[ifft] + isample)/2]; // Here I am just loading src into local memory to 
+  int8_t src_i = src[(isample - shifts[ifft])/2]; // Here I am just loading src into local memory to 
                                           // reduce the number of reads from global memory
 
   // I have just changed the order of the writes made to dest
