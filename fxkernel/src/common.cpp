@@ -13,15 +13,13 @@ void allocDataHost(uint8_t ***data, int numantenna, int numchannels, int numffts
     cfactor = 2; // If real data FFT size twice size of number of frequecy channels
   }
   
-  subintbytes = numchannels*cfactor*numffts*nbit/8*nPol;
+  subintbytes = numchannels*cfactor*(numffts+1)*nbit/8*nPol;
   cout << "Allocating " << subintbytes/1024/1024 << " MB per antenna per subint" << endl;
   cout << "          " << subintbytes * numantenna / 1024 / 1024 << " MB total" << endl;
 
-
   *data = new uint8_t*[numantenna];
-  for (i=0; i<numantenna; i++)
-  {
-    (*data)[i] = new uint8_t[subintbytes];
+  for (int a=0; a<numantenna; a++){
+    cudaHostAlloc((void**)&(*data)[a], subintbytes*sizeof(uint8_t), cudaHostAllocDefault);
   }
 }
 
@@ -49,6 +47,13 @@ void parseConfig(char *configfilename, int &nbit, int & nPol, bool &iscomplex, i
   string line;
   int anttoread = 0;
   int iant = 0;
+
+  //set some defaults
+  nPol = 2;
+  iscomplex = 0;
+  nbit = 2;
+
+  // read the config file
   while (std::getline(fconfig, line))
   {
     std::istringstream iss(line);

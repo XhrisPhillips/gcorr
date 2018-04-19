@@ -81,11 +81,10 @@ void allocDataGPU(int8_t ****packedData, cuComplex ***unpackedData,
 		  cuComplex ***channelisedData, cuComplex ***baselineData, 
 		  float ***rotationPhaseInfo, float ***fractionalSampleDelays, int ***sampleShifts, 
       double ***gpuDelays, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum,
-      int num_streams) {
+      int num_streams, int num_packed_bytes) {
 
   unsigned long long GPUalloc = 0;
 
-  int packedBytes = subintsamples*nbit*nPol/8;
   *packedData = new int8_t**[num_streams];
   *unpackedData = new cuComplex*[num_streams];
   *channelisedData = new cuComplex*[num_streams];
@@ -100,8 +99,8 @@ void allocDataGPU(int8_t ****packedData, cuComplex ***unpackedData,
   for (int s=0; s<num_streams; s++) {
     (*packedData)[s] = new int8_t*[numantenna];
     for (int i=0; i<numantenna; i++) {
-      gpuErrchk(cudaMalloc(&((*packedData)[s])[i], packedBytes));
-      GPUalloc += packedBytes;
+      gpuErrchk(cudaMalloc(&((*packedData)[s][i]), num_packed_bytes));
+      GPUalloc += num_packed_bytes;
     }
 
     gpuErrchk(cudaMalloc(&(*unpackedData)[s], numantenna*nPol*subintsamples*sizeof(cuComplex)));
@@ -136,19 +135,6 @@ void allocDataGPU(int8_t ****packedData, cuComplex ***unpackedData,
   }
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
-}
-
-void allocDataHost(uint8_t ***data, int numantenna, int subintsamples, int nbit, int nPol, bool iscomplex, int &subintbytes)
-{
-  subintbytes = subintsamples*nbit*nPol/8;  // Watch 31bit overflow
-  cout << "Allocating " << subintbytes/1024/1024 << " MB per antenna per subint" << endl;
-  cout << "           " << subintbytes * numantenna / 1024 / 1024 << " MB total" << endl;
-
-
-  *data = new uint8_t*[numantenna];
-  for (int a=0; a<numantenna; a++){
-    gpuErrchk(cudaMallocHost(&(*data)[a], subintbytes*sizeof(uint8_t)));
-  }
 }
 
 inline float carg(const cuComplex& z) {return atan2(cuCimagf(z), cuCrealf(z));} // polar angle
@@ -248,9 +234,22 @@ int main(int argc, char *argv[])
   // Setup threads and blocks for the various kernels
   // Unpack
   int unpackThreads = NTHREADS;
-  int unpackBlocks  = subintsamples/nPol/unpackThreads;
-  if (unpackThreads*unpackBlocks*nPol!=subintsamples) {
-    cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
+  int unpackBlocks;
+  if (nbit==2 && !iscomplex) {
+    unpackBlocks = subintsamples/2/unpackThreads; // 2 time samples/byte
+    if (unpackThreads*unpackBlocks*nPol!=subintsamples) {
+      cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
+      exit(1);
+    }
+  } else if (nbit==8 && iscomplex) {
+    unpackBlocks = subintsamples*nPol/unpackThreads; // Each pol separately
+    if (unpackThreads*unpackBlocks!=subintsamples*nPol) {
+      cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
+      exit(1);
+    }
+  } else {
+    cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
+    exit(1);
   }
 
   // Fringe Rotate
@@ -310,13 +309,15 @@ int main(int argc, char *argv[])
   
   cout << "Allocate Memory" << endl;
   // Allocate space in the buffers for the data and the delays
+  printf("Allocating host data\n");
   allocDataHost(&inputdata, numantennas, numchannels, numffts, nbit, nPol, iscomplex, subintbytes);
 
   // Allocate space on the GPU
+  printf("Allocating GPU data\n");
   allocDataGPU(&packedData, &unpackedData, &channelisedData,
 	             &baselineData, &rotationPhaseInfo, &fractionalSampleDelays, &sampleShifts,
                &gpuDelays, numantennas, subintsamples,
-	             nbit, nPol, iscomplex, numchannels, numffts, parallelAccum, kNumStreams);
+	             nbit, nPol, iscomplex, numchannels, numffts, parallelAccum, kNumStreams, subintbytes);
 
   for (int i=0; i<numantennas; i++) {
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
@@ -357,27 +358,37 @@ int main(int argc, char *argv[])
   {
     int stream = l % kNumStreams;
 
+    int8_t *d_test_array;
+    cudaMalloc(&d_test_array, subintbytes);
+    uint8_t *h_test_array;
+    cudaMallocHost(&h_test_array, subintbytes);
+
     // Copy data to GPU
     cout << "Copy data to GPU" << endl;
     for (int i=0; i<numantennas; i++) {
       gpuErrchk(cudaMemcpyAsync(packedData[stream][i], inputdata[i], subintbytes, cudaMemcpyHostToDevice, streams[stream])); 
     }
+    
     // Copy delays to GPU
     cout << "Copy delays to GPU" << endl;
     for (int i=0; i<numantennas; i++) {
-      gpuErrchk(cudaMemcpy(&(gpuDelays[stream][i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice));
-      gpuErrchk(cudaMemcpy(&(gpuDelays[stream][i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice));
+      gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
+      gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
     }
-
+    
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
-    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays[stream], lo, sampletime, fftchannels, numchannels, rotationPhaseInfo[stream], 
+    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8,0,streams[stream]>>>(gpuDelays[stream], lo, sampletime, fftchannels, numchannels, rotationPhaseInfo[stream], 
                                                              sampleShifts[stream], fractionalSampleDelays[stream]);
     CudaCheckError();
 
     // Unpack the data
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
-      unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &(sampleShifts[stream][numffts*i]));
+      if (nbit==2 && !iscomplex) {
+	      unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &(sampleShifts[stream][numffts*i]));
+      } else if (nbit==8 && iscomplex) {
+	      unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i]);
+      }
       CudaCheckError();
     }
 
@@ -411,10 +422,15 @@ int main(int argc, char *argv[])
     // cout << "Finalise" << endl;
     finaliseAccum<<<accumBlocks,corrThreads,0,streams[stream]>>>(baselineData[stream], parallelAccum, nchunk);
     CudaCheckError();
-#else
+#elif 0
     int ccblock_width = 128;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, numantennas-1, numantennas-1);
-    CrossCorrAccumHoriz<2><<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftchannels);
+    CrossCorrAccumHoriz<<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftchannels);
+#else
+    int ccblock_width = 128;
+    int nantxp = numantennas*2;
+    dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
+    CCAH2<<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftchannels);
 #endif
   }
   
