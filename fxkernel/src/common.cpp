@@ -49,6 +49,13 @@ void parseConfig(char *configfilename, int &nbit, int & nPol, bool &iscomplex, i
   string line;
   int anttoread = 0;
   int iant = 0;
+
+  //set some defaults
+  nPol = 2;
+  iscomplex = 0;
+  nbit = 2;
+
+  // read the config file
   while (std::getline(fconfig, line))
   {
     std::istringstream iss(line);
