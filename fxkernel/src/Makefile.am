@@ -6,4 +6,4 @@
 # Header files are not compiled, but should be listed as dependencies so that
 # they get distributed.
 bin_PROGRAMS = testfxkernel
-testfxkernel_SOURCES = testfxkernel.cpp fxkernel.cpp
+testfxkernel_SOURCES = testfxkernel.cpp fxkernel.cpp common.cpp
