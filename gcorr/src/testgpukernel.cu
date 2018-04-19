@@ -417,7 +417,11 @@ int main(int argc, char *argv[])
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
       if (nbit==2 && !iscomplex) {
+#if 0
 	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]), fftsamples);
+#else
+	unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &rotationPhaseInfo[i*numffts*2], &(sampleShifts[numffts*i]), fftsamples);
+#endif
       } else if (nbit==8 && iscomplex) {
 	unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]), fftsamples);
       }
@@ -429,8 +433,10 @@ int main(int argc, char *argv[])
     setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotationPhaseInfo);
     CudaCheckError();*/
 
+#if 0
     FringeRotate<<<fringeBlocks,fringeThreads>>>(unpackedData, rotationPhaseInfo);
     CudaCheckError();
+#endif
   
     // FFT
     //cout << "FFT data" << endl;

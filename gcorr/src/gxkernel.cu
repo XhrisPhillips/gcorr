@@ -49,6 +49,14 @@ __host__ __device__ static __inline__ void cuRotatePhase2 (cuComplex &x, float &
   return;
 }
 
+// Rotate inplace a complex number by theta (radians)
+__host__ __device__ static __inline__ void cuRotatePhase3 (float x, cuComplex &y, float &sinA, float &cosA)
+{
+  y.x = x * cosA;
+  y.y = x * sinA;
+  return;
+}
+
 void freeMem() {
   cudaError_t status;
   size_t free, total;
@@ -255,6 +263,40 @@ __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const 
 
   dest[subintsamples + isample] = make_cuFloatComplex(kLevels_2bit[(src_i>>2)&0x3], 0);
   dest[subintsamples + isample + 1] = make_cuFloatComplex(kLevels_2bit[(src_i>>6)&0x3], 0);
+}
+
+__global__ void unpack2bit_2chan_rotate(cuComplex *dest, const int8_t *src, float *rotVec, const int32_t *shifts, const int32_t fftsamples) {
+  // static const float HiMag = 3.3359;  // Optimal value
+  // const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
+  const size_t isample = 2*(blockDim.x * blockIdx.x + threadIdx.x);
+  const size_t ifft = blockIdx.y;
+  const size_t osample = isample + ifft*fftsamples;
+  int subintsamples = fftsamples * gridDim.y;
+  int8_t src_i = src[(osample - shifts[ifft])/2]; // Here I am just loading src into local memory to 
+                                          // reduce the number of reads from global memory
+
+  // I have just changed the order of the writes made to dest
+  // In theory this should reduce the number of write operations made
+  // I have also implemented the use of constant memory for the levels_2bit
+  // array
+  float samp0 = kLevels_2bit[src_i&0x3];
+  float samp1 = kLevels_2bit[(src_i>>4)&0x3];
+  float samp2 = kLevels_2bit[(src_i>>2)&0x3];
+  float samp3 = kLevels_2bit[(src_i>>6)&0x3];
+
+  // phase and slope for this FFT
+  float p0 = rotVec[ifft*2];
+  float p1 = rotVec[ifft*2+1];
+  float theta0 = -p0 - isample*p1;
+  float theta1 = -p0 - (isample+1)*p1;
+
+  float sinT0, cosT0, sinT1, cosT1;
+  sincosf(theta0, &sinT0, &cosT0);
+  sincosf(theta1, &sinT1, &cosT1);
+  cuRotatePhase3(samp0, dest[osample], sinT0, cosT0);
+  cuRotatePhase3(samp1, dest[osample+1], sinT1, cosT1);
+  cuRotatePhase3(samp2, dest[subintsamples + osample], sinT0, cosT0);
+  cuRotatePhase3(samp3, dest[subintsamples + osample+1], sinT1, cosT1);
 }
 
 /* Unpack 2bit real data in complex float, assuming 2 interleave channels 
