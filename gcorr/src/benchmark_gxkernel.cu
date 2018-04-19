@@ -280,8 +280,8 @@ void timerPrintStatistics(struct timerCollection *tc, const char *timerName,
 	   (tc->numIterations[c] - 1), (tc->timerStatistics[c][0]),
 	   (tc->timerStatistics[c][1]), (tc->timerStatistics[c][2]),
 	   implied_time, ((implied_time * 1e3) / tc->timerStatistics[c][0]));
-    writeJsonValue(fp, "int", 0, "niterations", (tc->numIterations[c] - 1));
-    writeJsonValue(fp, "int", 0, "average", tc->timerStatistics[c][0]);
+    writeJsonValue(fp, "int", 1, "niterations", (tc->numIterations[c] - 1));
+    writeJsonValue(fp, "float", 0, "average", tc->timerStatistics[c][0]);
     writeJsonValue(fp, "float", 0, "minimum", tc->timerStatistics[c][1]);
     writeJsonValue(fp, "float", 0, "maximum", tc->timerStatistics[c][2]);
     writeJsonValue(fp, "float", 0, "speedup", ((implied_time * 1e3) / tc->timerStatistics[c][0]));
