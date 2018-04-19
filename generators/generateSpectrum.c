@@ -136,7 +136,7 @@ int main (int argc, char * const argv[]) {
   
   /* Read command line options */
   while (1) {
-    opt = getopt_long_only(argc, argv, "w:B:xb:d:m:M:y:t:n:c:T:hF:C:", options, NULL);
+    opt = getopt_long_only(argc, argv, "w:B:xb:d:m:M:y:t:n:cT:hF:C:", options, NULL);
     if (opt==EOF) break;
     
 #define CASEINT(ch,var)                                     \
@@ -197,12 +197,19 @@ int main (int argc, char * const argv[]) {
 
       case 'h':
 	printf("Usage: generateSpectrum [options]\n");
-	printf("  -bandwidth <BANWIDTH>     Channel bandwidth in MHz (64)\n");
-	printf("  -N/-nbits <N>             Number of bits/sample (default 2)\n");
+	printf("  -w/-bandwidth <BANWIDTH>  Channel bandwidth in MHz (64)\n");
+	printf("  -b/-nbits <N>             Number of bits/sample (default 2)\n");
+	printf("  -c/-complex               Generate complex data\n");
 	printf("  -C/-channels <N>          Number of if channels (default 1)\n");
-	printf("  -t/-duration <DURATION>   Length of output, in seconds\n");
+	printf("  -f/-float                 Save data as floats\n");
+	printf("  -l/-duration <DURATION>   Length of output, in seconds\n");
 	printf("  -T/-tone <TONE>           Frequency (MHz) of tone to insert\n");
 	printf("  -ntap <TAPS>              Number of taps for FIR filter to create band shape\n");
+	printf("  -a/-amp <amp>             Amplitude of tone\n");
+	printf("  -A/-amp2 <amp2>d          Amplitude of second tone\n");
+	printf("  -T/-tone <TONE>           Frequency of tone (MHz)\n");
+	printf("  -2/-tone2 <TONE>          Frequency of second tone  (MHz)\n");
+	printf("  -n/-noise                 Include (correlated) noise\n");
 	printf("  -day <DAY>                Day of month of start time (now)\n");
 	printf("  -month <MONTH>            Month of start time (now)\n");
 	printf("  -dayno <DAYNO>            Day of year of start time (now)\n");
@@ -261,7 +268,7 @@ int main (int argc, char * const argv[]) {
   } else if (nbits==0) {
     nbits=2;
   }
-  
+
   int cfact = 1;
   if (iscomplex) cfact = 2;
 
@@ -416,7 +423,7 @@ int main (int argc, char * const argv[]) {
 	status = packBit2(data, outdata, nchan, mean[0], stdDev[0], bufsamples*cfact);
 	if (status) exit(1);
       } else if (nbits==8) {
-	status = packBit8(data, (Ipp8s*)outdata, nchan, mean[0], 1.0, 10, bufsamples*cfact);
+	status = packBit8(data, (Ipp8s*)outdata, nchan, iscomplex, mean[0], 1.0, 10, bufsamples*cfact);
       } else if (nbits==16) {
 	status = packBit16(data, (Ipp16s*)outdata, nchan, mean[0], 1.0, 10, bufsamples*cfact);
       } else {
