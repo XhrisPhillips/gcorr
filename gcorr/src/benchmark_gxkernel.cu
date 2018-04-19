@@ -597,6 +597,15 @@ int main(int argc, char *argv[]) {
   corrBlocks = dim3(blockchan, parallelAccum);
   accumBlocks = dim3(blockchan, 4, nbaseline);
   nchunk = numffts / parallelAccum;
+
+  printf("\n\nEach cross correlation test will run:\n");
+  printf("  parallelAccum = %d\n", parallelAccum);
+  printf("  nbaselines = %d\n", nbaseline);
+  printf("  corrThreads = %d\n", corrThreads);
+  printf("  corrBlocks = x: %d , y: %d, z: %d\n", corrBlocks.x, corrBlocks.y, corrBlocks.z);
+  printf("  accumBlocks = x: %d , y: %d, z: %d\n", accumBlocks.x, accumBlocks.y, accumBlocks.z);
+  printf("  nchunk = %d\n", nchunk);
+
   
   cudaEventCreate(&start_test_crosscorr);
   cudaEventCreate(&end_test_crosscorr);
@@ -639,8 +648,8 @@ int main(int argc, char *argv[]) {
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
-	 averagetime_crosscorr, mintime_crosscorr, maxtime_crosscorr, implied_time,
-	 ((implied_time * 1e3) / averagetime_crosscorr));
+	 averagetime_accum, mintime_accum, maxtime_accum, implied_time,
+	 ((implied_time * 1e3) / averagetime_accum));
 
   
   cudaEventDestroy(start_test_crosscorr);
