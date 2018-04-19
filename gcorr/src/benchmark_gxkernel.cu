@@ -384,13 +384,14 @@ int main(int argc, char *argv[]) {
   curandGenerator_t gen;
 
   FILE *jsonvis = NULL;
+  
+  argp_parse(&argp, argc, argv, 0, 0, &arguments);
+
   // Prepare a JSON file if necessary.
   if (strlen(arguments.jsonfile) > 0) {
     prepareJson(&jsonvis, arguments.jsonfile);
   }
   
-  argp_parse(&argp, argc, argv, 0, 0, &arguments);
-
   // Always discard the first trial.
   arguments.nloops += 1;
 
