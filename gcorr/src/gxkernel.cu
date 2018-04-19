@@ -49,11 +49,19 @@ __host__ __device__ static __inline__ void cuRotatePhase2 (cuComplex &x, float &
   return;
 }
 
-// Rotate inplace a complex number by theta (radians)
-__host__ __device__ static __inline__ void cuRotatePhase3 (float x, cuComplex &y, float &sinA, float &cosA)
+// Rotate a complex number by theta (radians)
+__host__ __device__ static __inline__ void cuRotatePhase3 (float x, cuComplex &y, float sinA, float cosA)
 {
   y.x = x * cosA;
   y.y = x * sinA;
+  return;
+}
+
+// Rotate a complex number by theta (radians)
+__host__ __device__ static __inline__ void cuRotatePhase4 (cuComplex x, cuComplex &y, float sinA, float cosA)
+{
+  y.x = x.x * cosA - x.y * sinA;
+  y.y = x.x * sinA + x.y * cosA;
   return;
 }
 
@@ -238,6 +246,27 @@ __global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src, cons
   int osamp = isamp/2 + pol*subintsamples;
 
   dest[ifft*fftsamples + osamp] = make_cuFloatComplex(src[ibyte - shifts[ifft]*4], src[ibyte - shifts[ifft]*4 + 1]);
+}
+
+__global__ void unpack8bitcomplex_2chan_rotate(cuComplex *dest, const int8_t *src, float *rotVec, const int32_t *shifts, const int32_t fftsamples) {
+  const size_t isamp = (blockDim.x * blockIdx.x + threadIdx.x); //This can go from 0 ... fftsamples*2 (i.e., number of samples in an FFT * 2 channels)
+  const size_t ifft = blockIdx.y;
+  int subintsamples = fftsamples * gridDim.y;
+
+  int ibyte = isamp*2; // 2 bytes per complex sample
+  int pol = isamp % 2;
+  int osamp = isamp/2 + pol*subintsamples;
+
+  cuComplex samp = make_cuFloatComplex(src[ibyte - shifts[ifft]*4], src[ibyte - shifts[ifft]*4 + 1]);
+
+  // phase and slope for this FFT
+  float p0 = rotVec[ifft*2];
+  float p1 = rotVec[ifft*2+1];
+  float theta = p0 + isamp*p1;
+
+  float sinT, cosT;
+  sincosf(theta, &sinT, &cosT);
+  cuRotatePhase4(samp, dest[ifft*fftsamples + osamp], sinT, cosT);
 }
 
 __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const int32_t *shifts, const int32_t fftsamples) {

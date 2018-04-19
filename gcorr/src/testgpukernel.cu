@@ -423,7 +423,11 @@ int main(int argc, char *argv[])
 	unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &rotationPhaseInfo[i*numffts*2], &(sampleShifts[numffts*i]), fftsamples);
 #endif
       } else if (nbit==8 && iscomplex) {
+#if 0
 	unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]), fftsamples);
+#else
+	unpack8bitcomplex_2chan_rotate<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &rotationPhaseInfo[i*numffts*2], &(sampleShifts[numffts*i]), fftsamples);
+#endif
       }
       CudaCheckError();
     }

@@ -55,6 +55,7 @@ void init_2bitLevels();
 
 __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src);
 __global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src, const int32_t *shifts, int fftsamples);
+__global__ void unpack8bitcomplex_2chan_rotate(cuComplex *dest, const int8_t *src, float *rotVec, const int32_t *shifts, int fftsamples);
 __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const int32_t *shifts, int fftsamples);
 __global__ void unpack2bit_2chan_rotate(cuComplex *dest, const int8_t *src, float *rotVec, const int32_t *shifts, int fftsamples);
 __global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant);
