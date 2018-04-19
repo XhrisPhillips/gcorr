@@ -162,6 +162,7 @@ int main(int argc, char *argv[])
   // variables for the test
   char *configfile;
   int subintbytes, status, cfactor;
+  int numkernelexecutions, kernelexecutionsperthread;
   int nPol;
   int samplegranularity; /**< how many time samples per byte.  If >1, then our fractional sample error can be >0.5 samples */
   uint8_t ** inputdata;
@@ -228,15 +229,14 @@ int main(int argc, char *argv[])
 
   // Setup threads and blocks for the various kernels
   // Unpack
-  int unpackThreads, blockchan;
-  int idealthreads; 
+  int unpackThreads;
   if (nbit==2 && !iscomplex)
   {
-    idealthreads = fftsamples/2;
+    numkernelexecutions = fftsamples/2;
   }
   else if (nbit==8 && iscomplex)
   {
-    idealthreads = fftsamples*2;
+    numkernelexecutions = fftsamples*2;
   } 
   else
   {
@@ -244,18 +244,18 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  if (idealthreads<=NTHREADS) {
-    unpackThreads = idealthreads;
-    blockchan = 1;
+  if (numkernelexecutions<=NTHREADS) {
+    unpackThreads = numkernelexecutions;
+    executionsperthread = 1;
   } else {
     unpackThreads = NTHREADS;
-    blockchan = idealthreads/(NTHREADS);
-    if (idealthreads%(NTHREADS)) {
-      cerr << "Error: NTHREADS not divisible into fftsamples" << endl;
+    executionsperthread = numkernelexecutions/(NTHREADS);
+    if (numkernelexecutions%(NTHREADS)) {
+      cerr << "Error: NTHREADS not divisible into number of kernel executions for unpack" << endl;
       exit(1);
     }
   }
-  dim3 unpackBlocks = dim3(blockchan, numffts);
+  dim3 unpackBlocks = dim3(executionsperthread, numffts);
 
   /*
   int unpackThreads = NTHREADS;
@@ -280,33 +280,37 @@ int main(int argc, char *argv[])
 
   // Fringe Rotate
   int fringeThreads;
-  if (fftsamples<=NTHREADS) {
-    fringeThreads = fftsamples;
-    blockchan = 1;
+  numkernelexecutions = fftsamples;
+
+  if (numkernelexecutions<=NTHREADS) {
+    fringeThreads = numkernelexecutions;
+    executionsperthread = 1;
   } else {
     fringeThreads = NTHREADS;
-    blockchan = fftsamples/NTHREADS;
-    if (fftsamples%NTHREADS) {
-      cerr << "Error: NTHREADS not divisible into fftsamples" << endl;
+    executionsperthread = numkernelexecutions/NTHREADS;
+    if (numkernelexecutions%NTHREADS) {
+      cerr << "Error: NTHREADS not divisible into numkernelexecutions for fringe rotation" << endl;
       exit(1);
     }
   }
-  dim3 fringeBlocks = dim3(blockchan, numffts, numantennas);
+  dim3 fringeBlocks = dim3(executionsperthread, numffts, numantennas);
 
   // Fractional Delay
   int fracDelayThreads;
-  if (numchannels<=NTHREADS) {
-    fracDelayThreads = numchannels;
-    blockchan = 1;
+  numkernelexecutions = numchannels;
+
+  if (numkernelexecutions<=NTHREADS) {
+    fracDelayThreads = numkernelexecutions;
+    executionsperthread = 1;
   } else {
     fracDelayThreads = NTHREADS;
-    blockchan = numchannels/NTHREADS;
-    if (numchannels%NTHREADS) {
-      cerr << "Error: NTHREADS not divisible into fftsamples" << endl;
+    executionsperthread = numkernelexecutions/NTHREADS;
+    if (numkernelexecutions%NTHREADS) {
+      cerr << "Error: NTHREADS not divisible into numkernelexecutions for fractional sample correction" << endl;
       exit(1);
     }
   }
-  dim3 fracDelayBlocks = dim3(blockchan, numffts, numantennas);
+  dim3 fracDelayBlocks = dim3(executionsperthread, numffts, numantennas);
 
 #if 0
   // CrossCorr
