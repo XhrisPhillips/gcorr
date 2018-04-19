@@ -271,8 +271,8 @@ int main(int argc, char *argv[])
   }
   dim3 fracDelayBlocks = dim3(blockchan, numffts, numantennas);
 
+#if 0
   // CrossCorr
-  int targetThreads = 50e4;  // This seems a *lot*
   int corrThreads;
   if (numchannels<=512) {
     corrThreads = numchannels;
@@ -281,20 +281,22 @@ int main(int argc, char *argv[])
     corrThreads = 512;
     blockchan = numchannels/512;
   }
+#endif
+  int targetThreads = 50e4;  // This seems a *lot*
   int parallelAccum = (int)ceil(targetThreads/numchannels+1); // I suspect this has failure modes
-  cout << "Initial parallelAccum=" << parallelAccum << endl;
+  //cout << "Initial parallelAccum=" << parallelAccum << endl;
   while (parallelAccum && numffts % parallelAccum) parallelAccum--;
   if (parallelAccum==0) {
     cerr << "Error: Could not determine block size for Cross Correlation" << endl;
     exit(1);
   }
+#if 0
   int nchunk = numffts / parallelAccum;
   dim3 corrBlocks = dim3(blockchan, parallelAccum);
   cout << "Corr Threads:  " << corrThreads << " " << blockchan << ":" << parallelAccum << "/" << nchunk << endl;
-
   // Final Cross Corr accumulation
   dim3 accumBlocks = dim3(blockchan, 4, nbaseline);
-
+#endif
   
   cout << "Allocate Memory" << endl;
   // Allocate space in the buffers for the data and the delays
@@ -408,6 +410,9 @@ int main(int argc, char *argv[])
   cudaEventElapsedTime(&dtime, start_exec, stop_exec);
 
   cout << "Total execution time for " << arguments.nloops << " loops =  " <<  dtime << " ms" << endl;
+
+  float rate = (float)subintsamples * numantennas * (2./cfactor) * nPol * nbit *arguments.nloops /(dtime/1000.)/1e9;
+  cout << "Processed " << subinttime*arguments.nloops << " sec of data (" << rate << " Gbps)" << endl;
 
 #if 0
   saveVisibilities("vis.out", baselineData, nbaseline, numchannels, parallelAccum*numchannels, bandwidth);
