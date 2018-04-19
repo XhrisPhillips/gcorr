@@ -517,8 +517,8 @@ int main(int argc, char *argv[]) {
   sampletime = (arguments.complexdata == 1) ? (1.0 / arguments.bandwidth) : (1.0 / (2 * arguments.bandwidth));
   
   
-  unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
-  printf("Each unpacking test will run with %d threads, %d x %d blocks\n", arguments.nthreads, unpackBlocks.x, unpackBlocks.y);
+  //unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
+  printf("Each unpacking test will run with %d threads, %d x %d blocks\n", unpackThreads, unpackBlocks.x, unpackBlocks.y);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
   
