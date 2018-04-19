@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
   // variables for the test
   char *configfile;
   int subintbytes, status, cfactor;
-  int numkernelexecutions, kernelexecutionsperthread;
+  int numkernelexecutions, executionsperthread;
   int nPol;
   int samplegranularity; /**< how many time samples per byte.  If >1, then our fractional sample error can be >0.5 samples */
   uint8_t ** inputdata;
@@ -277,6 +277,22 @@ int main(int argc, char *argv[])
     exit(1);
   }*/
   
+  // Set the number of blocks for when calculating the delay and phase info
+  int delayPhaseThreads;
+  numkernelexecutions = numffts;
+
+  if (numkernelexecutions<=NTHREADS) {
+    delayPhaseThreads = numkernelexecutions;
+    executionsperthread = 1;
+  } else {
+    delayPhaseThreads = NTHREADS;
+    executionsperthread = numkernelexecutions/NTHREADS;
+    if (numkernelexecutions%NTHREADS) {
+      cerr << "Error: NTHREADS not divisible into numkernelexecutions for delay and phase calculations" << endl;
+      exit(1);
+    }
+  }
+  dim3 delayPhaseBlocks = dim3(executionsperthread, numantennas);
 
   // Fringe Rotate
   int fringeThreads;
@@ -386,17 +402,15 @@ int main(int argc, char *argv[])
     cerr << "Error: numffts must be divisible by 8" << endl;
     exit(1);
   }
-  // Set the number of blocks for fringe rotation (and fractional sample delay?)
-  dim3 FringeSetblocks = dim3(8, numantennas);
 
   // Record the start time
   cudaEventRecord(start_exec, 0);
   for (int l=0; l<arguments.nloops; l++)
   {
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
-    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftsamples, numchannels, 
-                                                             samplegranularity, rotationPhaseInfo, 
-                                                             sampleShifts, fractionalSampleDelays);
+    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads>>>(gpuDelays, lo, sampletime, fftsamples, numchannels, 
+                                                                      samplegranularity, rotationPhaseInfo, 
+                                                                      sampleShifts, fractionalSampleDelays);
     CudaCheckError();
 
     // Unpack the data
