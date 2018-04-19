@@ -1,5 +1,6 @@
 #include <cuComplex.h>
 #include "gxkernel.h"
+#include <math.h>
 
 // Add complex number to another number 
 __host__ __device__ static __inline__ void cuCaddIf(cuFloatComplex *a, cuFloatComplex b)
@@ -59,6 +60,47 @@ void freeMem() {
   printf("GPU memory available %.1f/%.1f MBbytes\n", free/1024.0/1024, total/1024.0/1024);
 }
 
+/* Calculate the starting fringe rotation phase and phase increment for each FFT of each antenna, and the fractional sample error */
+__global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double sampletime, int fftsamples, int fftchannels, float * rotationPhaseInfo, int *sampleShifts, float* fractionalSampleDelays)
+{
+  size_t ifft = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t iant = blockIdx.y;
+  int numffts = blockDim.x * gridDim.x;
+  double meandelay, deltadelay, netdelaysamples_f, startphase;
+  double d0, d1, d2, a, b;
+  double * interpolator = &(gpuDelays[iant*4]);
+  double filestartoffset = gpuDelays[iant*4+3];
+  float fractionaldelay;
+  int netdelaysamples;
+
+  // evaluate the delay for the given FFT of the given antenna
+
+  // calculate values at the beginning, middle, and end of this FFT
+  d0 = interpolator[0]*ifft*ifft + interpolator[1]*ifft + interpolator[2];
+  d1 = interpolator[0]*(ifft+0.5)*(ifft+0.5) + interpolator[1]*(ifft+0.5) + interpolator[2];
+  d2 = interpolator[0]*(ifft+1.0)*(ifft+1.0) + interpolator[1]*(ifft+1.0) + interpolator[2];
+
+  // use these to calculate a linear interpolator across the FFT, as well as a mean value
+  a = d2-d0; //this is the delay gradient across this FFT
+  b = d0 + (d1 - (a*0.5 + d0))/3.0; //this is the delay at the start of the FFT
+  meandelay = a*0.5 + b; //this is the delay in the middle of the FFT
+  deltadelay = b / fftsamples; // this is the change in delay per sample across this FFT window
+
+  netdelaysamples_f = (meandelay - filestartoffset) / sampletime;
+  netdelaysamples   = int(netdelaysamples_f + 0.5); //FIXME: do we ever get negative values here?
+
+  // Save the integer number of sample shifts
+  sampleShifts[iant*numffts + ifft] = netdelaysamples;
+
+  // Save the fractional delay
+  fractionaldelay = (float)(-(netdelaysamples_f - netdelaysamples)*2*M_PI/fftchannels);  // radians per FFT channel
+  fractionalSampleDelays[iant*numffts + ifft] = fractionaldelay;
+
+  // set the fringe rotation phase for the first sample of a given FFT of a given antenna
+  startphase = b*lo;
+  rotationPhaseInfo[iant*numffts*2 + ifft*2] = (float)(startphase - int(startphase))*2*M_PI;
+  rotationPhaseInfo[iant*numffts*2 + ifft*2 + 1] = (float)(deltadelay * lo)*2*M_PI;
+}
 
 /* Set fringe rotation vectors - dummy routine for now */
 __global__ void setFringeRotation(float *rotVec) {
@@ -66,8 +108,8 @@ __global__ void setFringeRotation(float *rotVec) {
   size_t iant = blockIdx.y;
   int numffts = blockDim.x * gridDim.x;
 
-  rotVec[iant*numffts + ifft*2] = 1e-6;
-  rotVec[iant*numffts + ifft*2+1] = 1e-12;
+  rotVec[iant*numffts*2 + ifft*2] = 1e-6;
+  rotVec[iant*numffts*2 + ifft*2+1] = 1e-12;
 }
 
 
@@ -92,8 +134,8 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   float theta = p0 + ichan*p1;
 
   // Should precompute sin/cos
-  cuRotatePhase(&ant[iant*2*subintsamples + ichan+ifft*fftsize], theta);
-  cuRotatePhase(&ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftsize, subintsamples)], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftsize, subintsamples)], theta);
 }
 
 __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
@@ -102,19 +144,48 @@ __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
   size_t ifft = blockIdx.y;
   size_t iant = blockIdx.z;
   int numffts = blockDim.y * gridDim.y;
-  int subintsamples = numffts * fftsize * 2;
+  int subintsamples = numffts * fftsize;
 
   // phase and slope for this FFT
-  float p0 = rotVec[iant*numffts + ifft*2];
-  float p1 = rotVec[iant*numffts + ifft*2+1];
+  float p0 = rotVec[iant*numffts*2 + ifft*2];
+  float p1 = rotVec[iant*numffts*2 + ifft*2+1];
   float theta = p0 + ichan*p1;
 
- // Should precompute sin/cos
   float sinT, cosT;
   __sincosf(theta, &sinT, &cosT);
-  cuRotatePhase2(ant[iant*2*subintsamples + ichan+ifft*fftsize], sinT, cosT);
-  cuRotatePhase2(ant[(iant*2+1)*subintsamples + ichan+ifft*fftsize], sinT, cosT);
+  cuRotatePhase2(ant[sampIdx(iant, 0, ichan+ifft*fftsize, subintsamples)], sinT, cosT);
+  cuRotatePhase2(ant[sampIdx(iant, 1, ichan+ifft*fftsize, subintsamples)], sinT, cosT);
 }
+
+/* Apply fractional delay correction, inplace correction
+   ant is data after FFT
+   fractionalDelayValues is array of phase corrections - assumed to be nornalised to 
+   bandwidth and number of channels
+
+   Kernel Dimensions:
+
+   threadIdx.x/blockInd.x give FFT channel number
+   blockIdx.y is FFT number 
+   blockIdx.z is antenna number 
+*/
+
+__global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValues,
+				     int numchannels, int fftchannels, int numffts, int subintsamples) {
+  size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t ifft = blockIdx.y;
+  size_t iant = blockIdx.z;
+  //int numffts = gridDim.y;
+  //int subintsamples = numffts * fftsize;
+
+  // phase and slope for this FFT
+  float dslope = fractionalDelayValues[iant*numffts + ifft];
+  float theta = ichan*dslope;
+
+  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftchannels, subintsamples)], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftchannels, subintsamples)], theta);
+}
+
+
 
 //__constant__ float levels_2bit[4];
 __constant__ float kLevels_2bit[4];
@@ -165,7 +236,7 @@ __global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src) {
   dest[ochan] = make_cuFloatComplex(src[ichan], src[ichan+1]);
 }
 
-__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src) {
+__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const int32_t *shifts) {
   // static const float HiMag = 3.3359;  // Optimal value
   // const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
   const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
@@ -272,7 +343,7 @@ __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int
   }
 }
 
-__global__ void finaliseAccum(cuComplex *accum, int parallelAccum) { 
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) { 
 
   int nchan = blockDim.x * gridDim.x;
   int ichan = (blockDim.x * blockIdx.x + threadIdx.x);
@@ -283,12 +354,11 @@ __global__ void finaliseAccum(cuComplex *accum, int parallelAccum) {
     cuCaddIf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)],
       accum[accumIdx(b, prod, ichan + i*nchan, nchan*parallelAccum)]);
   }
-  cuCdivCf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)], parallelAccum);
+  cuCdivCf(&accum[accumIdx(b, prod, ichan, nchan*parallelAccum)], parallelAccum*nchunk);
 }
 
 // Launched with antenna indices in block .y and .z.
-// Accumulates over first nchan entries in each fftwidth-wide block.
-template <int npol>
+// (Turns out having the pol loop in the kernel performs poorly!)
 __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
     int t = threadIdx.x+blockIdx.x*blockDim.x;
     if (t>=nchan) return;
@@ -302,14 +372,13 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
     // index into output vectors: = (j-i-1) + n-1 + ... + n-i
     int b = i*nant-i*(i+1)/2 + j-i-1;
-    b *= npol*npol;
 
-    int r = nfft*nchan;
+    int s = nfft*fftwidth;
 
-    for (int pi = 0; pi<npol; ++pi) {
-	for (int pj = 0; pj<npol; ++pj) {
-	    const float2* iv = ants+(i*npol+pi)*r+t;
-	    const float2* jv = ants+(j*npol+pj)*r+t;
+    for (int pi = 0; pi<2; ++pi) {
+	for (int pj = 0; pj<2; ++pj) {
+	    const float2* iv = &ants[antIdx(i, pi, t, s)];
+	    const float2* jv = &ants[antIdx(j, pj, t, s)];
 
 	    float2 u = iv[0];
 	    float2 v = jv[0];
@@ -317,7 +386,7 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 	    a.x = u.x*v.x + u.y*v.y;
 	    a.y = u.y*v.x - u.x*v.y;
 
-	    for (int k = fftwidth; k<r; k += fftwidth) {
+	    for (int k = fftwidth; k<s; k += fftwidth) {
 		u = iv[k];
 		v = jv[k];
 
@@ -327,14 +396,56 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
 	    a.x /= nfft;
 	    a.y /= nfft;
-	    accum[b*nchan+t] = a;
-	    ++b;
+	    accum[accumIdx(b, pi*2+pj, t, nchan)] = a;
 	}
     }
 }
 
-template __global__ void CrossCorrAccumHoriz<1>(cuComplex*, const cuComplex*, int, int, int, int);
-template __global__ void CrossCorrAccumHoriz<2>(cuComplex*, const cuComplex*, int, int, int, int);
+__global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+    int t = threadIdx.x+blockIdx.x*blockDim.x;
+    if (t>=nchan) return;
+
+    // blockIdx.y: index of first vector (2*antennaindex+polindex)
+    // blockIdx.z: index delta to second vector, minus 1.
+    int ii = blockIdx.y;
+    int ij = blockIdx.z;
+
+    ij += ii+1;
+
+    int ai = ii/2;
+    int aj = ij/2;
+
+    if (ai>=aj || ai>=nant || aj>=nant) return;
+
+    int pi = ii%2;
+    int pj = ij%2;
+
+    // index into output vector blocks: = (j-i-1) + n-1 + ... + n-i
+    int b = 4*(ai*nant-ai*(ai+1)/2 + aj-ai-1)+2*pi+pj;
+
+    int s = nfft*fftwidth;
+
+    const float2* iv = ants+ii*s+t;
+    const float2* jv = ants+ij*s+t;
+
+    float2 u = iv[0];
+    float2 v = jv[0];
+    float2 a;
+    a.x = u.x*v.x + u.y*v.y;
+    a.y = u.y*v.x - u.x*v.y;
+
+    for (int k = fftwidth; k<s; k += fftwidth) {
+        u = iv[k];
+        v = jv[k];
+
+        a.x += u.x*v.x + u.y*v.y;
+        a.y += u.y*v.x - u.x*v.y;
+    }
+
+    a.x /= nfft;
+    a.y /= nfft;
+    accum[b*nchan+t] = a;
+}
 
 __global__ void printArray(cuComplex *a) {
   int i = threadIdx.x;

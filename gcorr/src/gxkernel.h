@@ -5,6 +5,14 @@
 #include <stdio.h>
 
 __host__ __device__ static __inline__ int
+sampIdx(int antenna, int pol, int sample, int stride)
+{
+  const int num_pols = 2;
+
+  return (antenna * num_pols + pol) * stride + sample;
+}
+
+__host__ __device__ static __inline__ int
 antIdx(int antenna, int pol, int channel, int stride)
 {
   const int num_pols = 2;
@@ -46,15 +54,20 @@ void freeMem();
 void init_2bitLevels();
 
 __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src);
-__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src);
+__global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src);
+__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const int32_t *shifts);
 __global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const int iant);
+__global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double sampletime, int fftsamples, int fftchannels, float * rotationPhaseInfo, int* sampleShifts, float* fractionalSampleDelays);
 __global__ void setFringeRotation(float *rotVec);
 __global__ void FringeRotate(cuComplex *ant, float *rotVec);
 __global__ void FringeRotate2(cuComplex *ant, float *rotVec);
+__global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValues,
+				     int numchannels, int fftchannels, int numffts, int subintsamples);
 __global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
 __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
-__global__ void finaliseAccum(cuComplex *accum, int parallelAccum);
+__global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk);
 __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nantxp, int nfft, int nchan, int fftwidth);
+__global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth);
 __global__ void printArray(cuComplex *a);
 __global__ void printArrayInt(int8_t *a);
 

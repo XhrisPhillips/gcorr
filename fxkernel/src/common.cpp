@@ -13,7 +13,7 @@ void allocDataHost(uint8_t ***data, int numantenna, int numchannels, int numffts
     cfactor = 2; // If real data FFT size twice size of number of frequecy channels
   }
   
-  subintbytes = numchannels*cfactor*numffts*nbit/8*nPol;
+  subintbytes = numchannels*cfactor*(numffts+1)*nbit/8*nPol;
   cout << "Allocating " << subintbytes/1024/1024 << " MB per antenna per subint" << endl;
   cout << "          " << subintbytes * numantenna / 1024 / 1024 << " MB total" << endl;
 

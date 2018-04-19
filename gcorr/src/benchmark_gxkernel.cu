@@ -148,7 +148,17 @@ int main(int argc, char *argv[]) {
 
   // Always discard the first trial.
   arguments.nloops += 1;
+
   
+  // Calculate the number of FFTs
+  int fftchannels = arguments.nchannels * (arguments.complexdata == 1) ? 1 : 2;
+  int numffts = arguments.nsamples / fftchannels;
+  printf("numffts is %d\n", numffts);
+  if (numffts % 8) {
+    printf("Unable to proceed, numffts must be divisible by 8!\n");
+    exit(0);
+  }
+
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
   /*
@@ -156,38 +166,78 @@ int main(int argc, char *argv[]) {
    */
   cuComplex **unpacked = new cuComplex*[arguments.nantennas * npolarisations];
   cuComplex **unpackedData, *unpackedData2;
-  int8_t **packedData;
-  float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL; 
+  int8_t **packedData, **packedData8;
+  int32_t *sampleShift;
+  float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL, *dtime_unpack4=NULL;
+  float *dtime_delaycalc=NULL;
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
   float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
+  float averagetime_unpack4 = 0.0, mintime_unpack4 = 0.0, maxtime_unpack4 = 0.0;
   float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
   cudaEvent_t start_test_unpack2, end_test_unpack2;
   cudaEvent_t start_test_unpack3, end_test_unpack3;
+  cudaEvent_t start_test_unpack4, end_test_unpack4;
+  cudaEvent_t start_test_delaycalc, end_test_delaycalc;
+  dim3 FringeSetblocks;
+  double *gpuDelays, **delays, *antfileoffsets;
+  double lo, sampletime;
+  // TODO
+  float *rotationPhaseInfo, *fractionalSampleDelays;
 
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack3 = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_unpack4 = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_delaycalc = (float *)malloc(arguments.nloops * sizeof(float));
   int i, j, unpackBlocks;
 
+  FringeSetblocks = dim3(8, arguments.nantennas);
+  
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
+  int packedBytes8 = packedBytes * 4;
   packedData = new int8_t*[arguments.nantennas];
+  packedData8 = new int8_t*[arguments.nantennas];
   for (i = 0; i < arguments.nantennas; i++) {
     gpuErrchk(cudaMalloc(&packedData[i], packedBytes));
+    gpuErrchk(cudaMalloc(&packedData8[i], packedBytes8));
   }
-
   for (i = 0; i < arguments.nantennas * npolarisations; i++) {
     gpuErrchk(cudaMalloc(&unpacked[i], arguments.nsamples * sizeof(cuComplex)));
   }
   gpuErrchk(cudaMalloc(&unpackedData, arguments.nantennas * npolarisations * sizeof(cuComplex*)));
   gpuErrchk(cudaMemcpy(unpackedData, unpacked, arguments.nantennas * npolarisations * sizeof(cuComplex*), cudaMemcpyHostToDevice));
   gpuErrchk(cudaMalloc(&unpackedData2, arguments.nantennas * npolarisations * arguments.nsamples * sizeof(cuComplex)));
+
+  /* Allocate memory for the sample shifts vector */
+  gpuErrchk(cudaMalloc(&sampleShift, arguments.nantennas * numffts * sizeof(int)));
+  gpuErrchk(cudaMemset(sampleShift, 0, arguments.nantennas * numffts * sizeof(int)));
+  gpuErrchk(cudaMalloc(&rotationPhaseInfo, arguments.nantennas * numffts * 2 * sizeof(float)));
+  gpuErrchk(cudaMalloc(&fractionalSampleDelays, arguments.nantennas * numffts * 2 * sizeof(float)));
   
-  /*for (i = 0; i < arguments.nantennas; i++) {
-    gpuErrchk(cudaMalloc(&unpacked2[i], arguments.nsamples * npolarisations * sizeof(cuComplex)));
-    }*/
+  // Copy the delays to the GPU.
+  gpuErrchk(cudaMalloc(&gpuDelays, arguments.nantennas * 4 * sizeof(double)));
+  delays = new double*[arguments.nantennas];
+  antfileoffsets = new double[arguments.nantennas];
+  srand(time(NULL));
+  for (i = 0; i < arguments.nantennas; i++) {
+    delays[i] = new double[3];
+    for (j = 0; j < 3; j++) {
+      delays[i][j] = (double)rand();
+    }
+    antfileoffsets[i] = (double)rand();
+  }
+  for (i = 0; i < arguments.nantennas; i++) {
+    gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4]), delays[i], 3 * sizeof(double), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4 + 3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice));
+  }
+
+  // Generate some random numbers, and some not so random.
+  lo = (double)rand();
+  sampletime = (arguments.complexdata == 1) ? (1.0 / arguments.bandwidth) : (1.0 / (2 * arguments.bandwidth));
+  
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
   printf("Each unpacking test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
@@ -200,18 +250,46 @@ int main(int argc, char *argv[]) {
   cudaEventCreate(&end_test_unpack2);
   cudaEventCreate(&start_test_unpack3);
   cudaEventCreate(&end_test_unpack3);
+  cudaEventCreate(&start_test_unpack4);
+  cudaEventCreate(&end_test_unpack4);
+  cudaEventCreate(&start_test_delaycalc);
+  cudaEventCreate(&end_test_delaycalc);
   // Generate some random data.
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
   for (i = 0; i < arguments.nantennas; i++) {
     curandGenerateUniform(gen, (float*)packedData[i], packedBytes * (sizeof(int8_t) / sizeof(float)));
+    curandGenerateUniform(gen, (float*)packedData8[i], packedBytes8 * (sizeof(int8_t) / sizeof(float)));
   }
   curandDestroyGenerator(gen);
+
   for (i = 0; i < arguments.nloops; i++) {
     if (arguments.verbose) {
       printf("\nLOOP %d\n", i);
     }
 
+    // Run the delay calculator.
+    preLaunchCheck();
+    if (arguments.verbose) {
+      printf("  RUNNING DELAY KERNEL...");
+      printf("   blocks = x: %d y: %d\n", FringeSetblocks.x, FringeSetblocks.y);
+      printf("   threads = %d\n", numffts / 8);
+    }
+    cudaEventRecord(start_test_delaycalc, 0);
+    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
+							     fftchannels,
+							     arguments.nchannels,
+							     rotationPhaseInfo,
+							     sampleShift,
+							     fractionalSampleDelays);
+    cudaEventRecord(end_test_delaycalc, 0);
+    cudaEventSynchronize(end_test_delaycalc);
+    cudaEventElapsedTime(&(dtime_delaycalc[i]), start_test_delaycalc, end_test_delaycalc);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_delaycalc[i]);
+    }
+    postLaunchCheck();
+    
     // Now do the unpacking.
     preLaunchCheck();
     if (arguments.verbose) {
@@ -252,13 +330,30 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start_test_unpack3, 0);
     for (j = 0; j < arguments.nantennas; j++) {
       init_2bitLevels();
-      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], sampleShift);
     }
     cudaEventRecord(end_test_unpack3, 0);
     cudaEventSynchronize(end_test_unpack3);
     cudaEventElapsedTime(&(dtime_unpack3[i]), start_test_unpack3, end_test_unpack3);
     if (arguments.verbose) {
       printf("  done in %8.3f ms.\n", dtime_unpack3[i]);
+    }
+    postLaunchCheck();
+
+    preLaunchCheck();
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL 4... ");
+    }
+    cudaEventRecord(start_test_unpack4, 0);
+    for (j = 0; j < arguments.nantennas; j++) {
+      init_2bitLevels();
+      unpack8bitcomplex_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j]);
+    }
+    cudaEventRecord(end_test_unpack4, 0);
+    cudaEventSynchronize(end_test_unpack4);
+    cudaEventElapsedTime(&(dtime_unpack4[i]), start_test_unpack4, end_test_unpack4);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", dtime_unpack4[i]);
     }
     postLaunchCheck();
   }
@@ -268,6 +363,8 @@ int main(int argc, char *argv[]) {
 		   &mintime_unpack2, &maxtime_unpack2);
   (void)time_stats(dtime_unpack3, arguments.nloops, &averagetime_unpack3,
        &mintime_unpack3, &maxtime_unpack3);
+  (void)time_stats(dtime_unpack4, arguments.nloops, &averagetime_unpack4,
+       &mintime_unpack4, &maxtime_unpack4);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -292,6 +389,11 @@ int main(int argc, char *argv[]) {
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
    averagetime_unpack3, mintime_unpack3, maxtime_unpack3, implied_time,
    ((implied_time * 1e3) / averagetime_unpack3));
+  printf("\n==== ROUTINE: unpack28itcomplex_2chan ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+   averagetime_unpack4, mintime_unpack4, maxtime_unpack4, implied_time,
+   ((implied_time * 1e3) / averagetime_unpack4));
   
   
   // Clean up.
@@ -301,6 +403,10 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(end_test_unpack2);
   cudaEventDestroy(start_test_unpack3);
   cudaEventDestroy(end_test_unpack3);
+  cudaEventDestroy(start_test_unpack4);
+  cudaEventDestroy(end_test_unpack4);
+  cudaEventDestroy(start_test_delaycalc);
+  cudaEventDestroy(end_test_delaycalc);
 
 
   /*
@@ -309,7 +415,6 @@ int main(int argc, char *argv[]) {
   cuComplex *unpackedFR;
   /* A suitable array has already been defined and populated. */
   unpackedFR = unpackedData2;
-  int numffts;
   float *dtime_fringerotate=NULL, averagetime_fringerotate = 0.0;
   float mintime_fringerotate = 0.0, maxtime_fringerotate = 0.0;
   float *dtime_fringerotate2=NULL, averagetime_fringerotate2 = 0.0;
@@ -317,19 +422,12 @@ int main(int argc, char *argv[]) {
   float *rotVec;
   cudaEvent_t start_test_fringerotate, end_test_fringerotate;
   cudaEvent_t start_test_fringerotate2, end_test_fringerotate2;
-  dim3 FringeSetblocks, fringeBlocks;
+  dim3 fringeBlocks;
   dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_fringerotate2 = (float *)malloc(arguments.nloops * sizeof(float));
   
-  numffts = arguments.nsamples / arguments.nchannels;
-  if (numffts % 8) {
-    printf("Unable to proceed, numffts must be divisible by 8!\n");
-    exit(0);
-  }
-
   // Work out the block and thread numbers.
-  fringeBlocks = dim3((arguments.nchannels / (2 *arguments.nthreads)), numffts, arguments.nantennas);
-  FringeSetblocks = dim3(8, arguments.nantennas);
+  fringeBlocks = dim3((arguments.nchannels / arguments.nthreads), numffts, arguments.nantennas);
   printf("\n\nEach fringe rotation test will run:\n");
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nchannels = %d\n", arguments.nchannels);
@@ -347,13 +445,13 @@ int main(int argc, char *argv[]) {
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
   curandGenerateUniform(gen, rotVec, arguments.nantennas * numffts * 2);
   curandDestroyGenerator(gen);
-    
+
   for (i = 0; i < arguments.nloops; i++) {
     
     preLaunchCheck();
     cudaEventRecord(start_test_fringerotate2, 0);
 
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    //setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
     FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
     
     cudaEventRecord(end_test_fringerotate2, 0);
@@ -365,7 +463,7 @@ int main(int argc, char *argv[]) {
     preLaunchCheck();
     cudaEventRecord(start_test_fringerotate, 0);
 
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    //setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
     FringeRotate<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
     
     cudaEventRecord(end_test_fringerotate, 0);
@@ -380,13 +478,13 @@ int main(int argc, char *argv[]) {
 		   &mintime_fringerotate, &maxtime_fringerotate);
   (void)time_stats(dtime_fringerotate2, arguments.nloops, &averagetime_fringerotate2,
 		   &mintime_fringerotate2, &maxtime_fringerotate2);
-  printf("\n==== ROUTINES: setFringeRotation + FringeRotate ====\n");
+  printf("\n==== ROUTINES: FringeRotate ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
 	 averagetime_fringerotate, mintime_fringerotate, maxtime_fringerotate, implied_time,
 	 ((implied_time * 1e3) / averagetime_fringerotate));
-  printf("\n==== ROUTINES: setFringeRotation + FringeRotate2 ====\n");
+  printf("\n==== ROUTINES: FringeRotate2 ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
@@ -398,7 +496,6 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(end_test_fringerotate2);
 
 
-#ifndef NOFFT
   /*
    * This benchmarks the performance of the FFT.
    */
@@ -409,38 +506,53 @@ int main(int argc, char *argv[]) {
   cuComplex *channelisedData, *baselineData;
   int nbaseline = arguments.nantennas * (arguments.nantennas - 1) / 2;
   int parallelAccum = (int)ceil(arguments.nthreads / arguments.nchannels + 1);
+  int rc;
   while (parallelAccum && numffts % parallelAccum) parallelAccum--;
   if (parallelAccum == 0) {
     printf("Error: can not determine block size for the cross correlator!\n");
     exit(0);
   }
-  
+  dtime_fft = (float *)malloc(arguments.nloops * sizeof(float));
+
   cudaEventCreate(&start_test_fft);
   cudaEventCreate(&end_test_fft);
 
+  printf("\n\nEach fringe rotation test will run:\n");
+  printf("  parallelAccum = %d\n", parallelAccum);
+  printf("  nbaselines = %d\n", nbaseline);
+  
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
 		       parallelAccum * sizeof(cuComplex)));
+  gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
+		       arguments.nsamples * sizeof(cuComplex)));
+  if (rc = cufftPlan1d(&plan, fftchannels, CUFFT_C2C,
+		       2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
+    printf("FFT planning failed! %d\n", rc);
+    exit(0);
+  }
   for (i = 0; i < arguments.nloops; i++) {
 
     preLaunchCheck();
     cudaEventRecord(start_test_fft, 0);
-
-    cufftPlan1d(&plan, (arguments.nchannels / 2), CUFFT_C2C,
-		2 * arguments.nantennas * numffts);
-    cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD);
+    if (cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+      printf("FFT execution failed!\n");
+      exit(0);
+    }
     
     cudaEventRecord(end_test_fft, 0);
     cudaEventSynchronize(end_test_fft);
     cudaEventElapsedTime(&(dtime_fft[i]), start_test_fft,
 			 end_test_fft);
     postLaunchCheck();
-    
+
   }
+  cufftDestroy(plan);
+    
   // Do some statistics.
   (void)time_stats(dtime_fft, arguments.nloops, &averagetime_fft,
 		   &mintime_fft, &maxtime_fft);
-  printf("\n==== ROUTINES: cufftPlan1d + cufftExecC2C ====\n");
+  printf("\n==== ROUTINES: cufftExecC2C ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	 (arguments.nloops - 1),
@@ -450,16 +562,11 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(start_test_fft);
   cudaEventDestroy(end_test_fft);
   
-#endif
-
-#define NOCROSSCORRACCUM
-  
 #ifndef NOCROSSCORRACCUM
   /*
    * This benchmarks the performance of the cross-correlator and accumulator
    * combination.
    */
-  cuComplex *baselineData;
   
   
   
