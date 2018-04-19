@@ -84,7 +84,7 @@ __global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double s
   a = d2-d0; //this is the delay gradient across this FFT
   b = d0 + (d1 - (a*0.5 + d0))/3.0; //this is the delay at the start of the FFT
   meandelay = a*0.5 + b; //this is the delay in the middle of the FFT
-  deltadelay = b / fftsamples; // this is the change in delay per sample across this FFT window
+  deltadelay = a / fftsamples; // this is the change in delay per sample across this FFT window
 
   netdelaysamples_f = (meandelay - filestartoffset) / sampletime;
   netdelaysamples = __double2int_rn(netdelaysamples_f/samplegranularity) * samplegranularity;
@@ -131,7 +131,7 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   // phase and slope for this FFT
   float p0 = rotVec[iant*numffts*2 + ifft*2];
   float p1 = rotVec[iant*numffts*2 + ifft*2+1];
-  float theta = p0 + ichan*p1;
+  float theta = -p0 - ichan*p1;
 
   // Should precompute sin/cos
   cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftsize, subintsamples)], theta);
