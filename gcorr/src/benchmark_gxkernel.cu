@@ -38,6 +38,154 @@ void postLaunchCheck() {
   }
 }
 
+struct timerCollection {
+  cudaEvent_t startTime;
+  cudaEvent_t endTime;
+  int nTimers;
+  char **timerNames;
+  int *numIterations;
+  float **timerResults;
+  float **timerStatistics;
+  int *timerCalculated;
+  int currentTimer;
+};
+
+void timerInitialise(struct timerCollection *tc) {
+  // Set up the structure correctly
+  cudaEventCreate(&(tc->startTime));
+  cudaEventCreate(&(tc->endTime));
+  tc->nTimers = 0;
+  tc->timerNames = NULL;
+  tc->numIterations = NULL;
+  tc->timerResults = NULL;
+  tc->timerStatistics = NULL;
+  tc->timerCalculated = NULL;
+  tc->currentTimer = -1;
+}
+
+void timerAdd(struct timerCollection *tc, const char* timerName) {
+  // Add a timer to the collector.
+  tc->nTimers ++;
+  tc->timerNames = (char **)realloc(tc->timerNames, tc->nTimers * sizeof(char *));
+  tc->timerNames[tc->nTimers - 1] = (char *)malloc(256 * sizeof(char));
+  strcpy(tc->timerNames[tc->nTimers - 1], timerName);
+  tc->numIterations = (int *)realloc(tc->numIterations, tc->nTimers * sizeof(int));
+  tc->numIterations[tc->nTimers - 1] = 0;
+  tc->timerResults = (float **)realloc(tc->timerResults, tc->nTimers * sizeof(float *));
+  tc->timerResults[tc->nTimers - 1] = NULL;
+  tc->timerStatistics = (float **)realloc(tc->timerStatistics, tc->nTimers * sizeof(float *));
+  tc->timerStatistics[tc->nTimers - 1] = (float *)malloc(3 * sizeof(float));
+  tc->timerCalculated = (int *)realloc(tc->timerCalculated, tc->nTimers * sizeof(int));
+  tc->timerCalculated[tc->nTimers - 1] = 0;
+}
+
+int timerStart(struct timerCollection *tc, const char *timerName) {
+  // Start the timer.
+  // Return immediately if a timer has already been started.
+  if (tc->currentTimer != -1) {
+    return -1;
+  }
+  
+  int i;
+  for (i = 0; i < tc->nTimers; i++) {
+    if (strcmp(tc->timerNames[i], timerName) == 0) {
+      tc->currentTimer = i;
+      break;
+    }
+  }
+
+  if (tc->currentTimer >= 0) {
+    tc->timerCalculated[tc->currentTimer] = 0;
+    preLaunchCheck();
+    cudaEventRecord(tc->startTime, 0);
+    return 0;
+  }
+
+  return -2;
+}
+
+float timerEnd(struct timerCollection *tc) {
+  // Stop the running timer.
+  // Return immediately if no timer has been started.
+  if (tc->currentTimer == -1) {
+    return 0.0;
+  }
+
+  // Keep a copy of the current timer.
+  int ct = tc->currentTimer;
+  
+  // Stop the timer.
+  cudaEventRecord(tc->endTime, 0);
+  cudaEventSynchronize(tc->endTime);
+  postLaunchCheck();
+
+  // Add an iteration to the right place.
+  tc->numIterations[ct] += 1;
+  int nint = tc->numIterations[ct];
+  tc->timerResults[ct] = (float *)realloc(tc->timerResults[ct],
+					  nint * sizeof(float));
+  cudaEventElapsedTime(&(tc->timerResults[ct][nint]),
+		       tc->startTime, tc->endTime);
+  
+
+  // Reset the current timer.
+  tc->currentTimer = -1;
+  
+  // Return the elapsed time.
+  return tc->timerResults[ct][nint];
+}
+
+void time_stats(float *timearray, int ntime, float *average, float *min, float *max) {
+  int i = 0;
+  *average = 0.0;
+  for (i = 1; i < ntime; i++) {
+    *average += timearray[i];
+    if (i == 1) {
+      *min = timearray[i];
+      *max = timearray[i];
+    } else {
+      *min = (timearray[i] < *min) ? timearray[i] : *min;
+      *max = (timearray[i] > *max) ? timearray[i] : *max;
+    }
+  }
+
+  if ((ntime - 1) > 0) {
+    *average /= (float)(ntime - 1);
+  }
+  return;
+}
+
+
+void timerPrintStatistics(struct timerCollection *tc, const char *timerName, float implied_time) {
+  // Calculate statistics if required and print the output.
+  int i, c = -1;
+
+  // Find the appropriate timer.
+  for (i = 0; i < tc->nTimers; i++) {
+    if (strcmp(tc->timerNames[i], timerName) == 0) {
+      c = i;
+      break;
+    }
+  }
+
+  if (c >= 0) {
+    if (tc->timerCalculated[c] == 0) {
+      // Calculate the statistics.
+      (void)time_stats(tc->timerResults[c], tc->numIterations[c],
+		       &(tc->timerStatistics[c][0]),
+		       &(tc->timerStatistics[c][1]),
+		       &(tc->timerStatistics[c][2]));
+      tc->timerCalculated[c] = 1;
+    }
+    printf("\n==== TIMER: %s ====\n", tc->timerNames[c]);
+    printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+    printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	   (tc->numIterations[c] - 1), (tc->timerStatistics[c][0]),
+	   (tc->timerStatistics[c][1]), (tc->timerStatistics[c][2]),
+	   implied_time, ((implied_time * 1e3) / tc->timerStatistics[c][0]));
+  }
+}
+
 const char *argp_program_version = "benchmark_gxkernel 1.0";
 static char doc[] = "benchmark_gxkernel -- testing performance of various kernels";
 static char args_doc[] = "";
@@ -107,26 +255,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 /* The argp parser */
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
-void time_stats(float *timearray, int ntime, float *average, float *min, float *max) {
-  int i = 0;
-  *average = 0.0;
-  for (i = 1; i < ntime; i++) {
-    *average += timearray[i];
-    if (i == 1) {
-      *min = timearray[i];
-      *max = timearray[i];
-    } else {
-      *min = (timearray[i] < *min) ? timearray[i] : *min;
-      *max = (timearray[i] > *max) ? timearray[i] : *max;
-    }
-  }
-
-  if ((ntime - 1) > 0) {
-    *average /= (float)(ntime - 1);
-  }
-  return;
-}
-
 
 int main(int argc, char *argv[]) {
   
@@ -161,6 +289,11 @@ int main(int argc, char *argv[]) {
 
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
+  // Our collection of timers.
+  struct timerCollection timers;
+  timerInitialise(&timers);
+  float timerResult;
+  
   /*
    * This benchmarks unpacker kernels.
    */
@@ -169,18 +302,15 @@ int main(int argc, char *argv[]) {
   int8_t **packedData, **packedData8;
   int32_t *sampleShift;
   float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL, *dtime_unpack4=NULL;
-  float *dtime_delaycalc=NULL;
   float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
   float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
   float averagetime_unpack4 = 0.0, mintime_unpack4 = 0.0, maxtime_unpack4 = 0.0;
-  float averagetime_delaycalc = 0.0, mintime_delaycalc = 0.0, maxtime_delaycalc = 0.0;
   float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
   cudaEvent_t start_test_unpack2, end_test_unpack2;
   cudaEvent_t start_test_unpack3, end_test_unpack3;
   cudaEvent_t start_test_unpack4, end_test_unpack4;
-  cudaEvent_t start_test_delaycalc, end_test_delaycalc;
   dim3 FringeSetblocks;
   double *gpuDelays, **delays, *antfileoffsets;
   double lo, sampletime;
@@ -191,7 +321,6 @@ int main(int argc, char *argv[]) {
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack3 = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack4 = (float *)malloc(arguments.nloops * sizeof(float));
-  dtime_delaycalc = (float *)malloc(arguments.nloops * sizeof(float));
   int i, j, unpackBlocks;
 
   FringeSetblocks = dim3(8, arguments.nantennas);
@@ -253,8 +382,6 @@ int main(int argc, char *argv[]) {
   cudaEventCreate(&end_test_unpack3);
   cudaEventCreate(&start_test_unpack4);
   cudaEventCreate(&end_test_unpack4);
-  cudaEventCreate(&start_test_delaycalc);
-  cudaEventCreate(&end_test_delaycalc);
   // Generate some random data.
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
@@ -264,32 +391,30 @@ int main(int argc, char *argv[]) {
   }
   curandDestroyGenerator(gen);
 
+  timerAdd(&timers, "calculateDelaysAndPhases");
+  
   for (i = 0; i < arguments.nloops; i++) {
     if (arguments.verbose) {
       printf("\nLOOP %d\n", i);
     }
 
     // Run the delay calculator.
-    preLaunchCheck();
     if (arguments.verbose) {
       printf("  RUNNING DELAY KERNEL...");
       printf("   blocks = x: %d y: %d\n", FringeSetblocks.x, FringeSetblocks.y);
       printf("   threads = %d\n", numffts / 8);
     }
-    cudaEventRecord(start_test_delaycalc, 0);
+    timerStart(&timers, "calculateDelaysAndPhases");
     calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
 							     fftchannels,
 							     arguments.nchannels,
 							     rotationPhaseInfo,
 							     sampleShift,
 							     fractionalSampleDelays);
-    cudaEventRecord(end_test_delaycalc, 0);
-    cudaEventSynchronize(end_test_delaycalc);
-    cudaEventElapsedTime(&(dtime_delaycalc[i]), start_test_delaycalc, end_test_delaycalc);
+    timerResult = timerEnd(&timers);
     if (arguments.verbose) {
-      printf("  done in %8.3f ms.\n", dtime_delaycalc[i]);
+      printf("  done in %8.3f ms.\n", timerResult);
     }
-    postLaunchCheck();
     
     // Now do the unpacking.
     preLaunchCheck();
@@ -366,8 +491,6 @@ int main(int argc, char *argv[]) {
        &mintime_unpack3, &maxtime_unpack3);
   (void)time_stats(dtime_unpack4, arguments.nloops, &averagetime_unpack4,
        &mintime_unpack4, &maxtime_unpack4);
-  (void)time_stats(dtime_delaycalc, arguments.nloops, &averagetime_delaycalc,
-       &mintime_delaycalc, &maxtime_delaycalc);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -377,11 +500,8 @@ int main(int argc, char *argv[]) {
   } else {
     implied_time /= 2 * (float)arguments.bandwidth;
   }
-  printf("\n==== ROUTINE: calculateDelaysAndPhases ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
-	 averagetime_delaycalc, mintime_delaycalc, maxtime_delaycalc, implied_time,
-	 ((implied_time * 1e3) / averagetime_delaycalc));
+  timerPrintStatistics(&timers, "calculateDelaysAndPhases", implied_time);
+  
   printf("\n==== ROUTINE: old_unpack2bit_2chan ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
@@ -413,8 +533,6 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(end_test_unpack3);
   cudaEventDestroy(start_test_unpack4);
   cudaEventDestroy(end_test_unpack4);
-  cudaEventDestroy(start_test_delaycalc);
-  cudaEventDestroy(end_test_delaycalc);
 
 
   /*
