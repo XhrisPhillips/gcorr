@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
 
   
   // Calculate the number of FFTs
-  int fftchannels = arguments.nchannels * (arguments.complexdata == 1) ? 1 : 2;
+  int fftchannels = arguments.nchannels * ((arguments.complexdata == 1) ? 1 : 2);
   int numffts = arguments.nsamples / fftchannels;
   printf("fftchannels = %d , numffts is %d\n", fftchannels, numffts);
   if (numffts % 8) {
