@@ -13,9 +13,15 @@ if not os.path.exists(sys.argv[1]):
 #data = np.fromfile(sys.argv[1])
 numcols = len(open(sys.argv[1]).readlines()[0].split())
 print numcols
-numblpols = numcols - 8
+skipcols = 8
+if (numcols - skipcols) % 4 != 0:
+    skipcols = 2
+if (numcols - skipcols) % 4 != 0:
+    print "not sure what kind of vis.out this is! numcols was", numcols, "- aborting"
+    sys.exit()
+numblpols = numcols - skipcols
 usecols = [1]
-for i in range(8,numcols):
+for i in range(skipcols,numcols):
     usecols.append(i)
 print "Number of bppols", numblpols
 data = np.loadtxt(sys.argv[1], usecols=usecols)
