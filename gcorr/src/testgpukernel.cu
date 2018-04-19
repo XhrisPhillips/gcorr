@@ -358,24 +358,28 @@ int main(int argc, char *argv[])
   {
     int stream = l % kNumStreams;
 
-    int8_t *d_test_array;
-    cudaMalloc(&d_test_array, subintbytes);
-    uint8_t *h_test_array;
-    cudaMallocHost(&h_test_array, subintbytes);
-
     // Copy data to GPU
-    cout << "Copy data to GPU" << endl;
+    // cout << "Copy data to GPU" << endl;
     for (int i=0; i<numantennas; i++) {
       gpuErrchk(cudaMemcpyAsync(packedData[stream][i], inputdata[i], subintbytes, cudaMemcpyHostToDevice, streams[stream])); 
     }
     
     // Copy delays to GPU
-    cout << "Copy delays to GPU" << endl;
+    // cout << "Copy delays to GPU" << endl;
     for (int i=0; i<numantennas; i++) {
       gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
       gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
     }
+
+    int previous_stream = (stream-1);
+    if (previous_stream < 0)
+      previous_stream += kNumStreams;
     
+    // Wait for the previous stream to complete all of its compute
+    // In testing it was observed that overlapping compute kernels
+    // reduced performance
+    cudaStreamSynchronize(streams[previous_stream]);
+
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
     calculateDelaysAndPhases<<<FringeSetblocks, numffts/8,0,streams[stream]>>>(gpuDelays[stream], lo, sampletime, fftchannels, numchannels, rotationPhaseInfo[stream], 
                                                              sampleShifts[stream], fractionalSampleDelays[stream]);
@@ -393,7 +397,7 @@ int main(int argc, char *argv[])
     }
 
     // Fringe Rotate //
-    cout << "Fringe Rotate" << endl;
+    // cout << "Fringe Rotate" << endl;
     setFringeRotation<<<FringeSetblocks, numffts/8,0,streams[stream]>>>(rotationPhaseInfo[stream]);
     CudaCheckError();
 
@@ -401,7 +405,7 @@ int main(int argc, char *argv[])
     CudaCheckError();
   
     // FFT
-    cout << "FFT data" << endl;
+    // cout << "FFT data" << endl;
     cufftSetStream(plan[stream], streams[stream]);
     if (cufftExecC2C(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
       cout << "CUFFT error: ExecC2C Forward failed" << endl;
@@ -413,7 +417,7 @@ int main(int argc, char *argv[])
     //CudaCheckError();
     
     // Cross correlate
-    cout << "Cross correlate" << endl;
+    // cout << "Cross correlate" << endl;
     gpuErrchk(cudaMemsetAsync(baselineData[stream], 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex), streams[stream]));
 
 #if 0
