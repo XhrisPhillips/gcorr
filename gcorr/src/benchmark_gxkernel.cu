@@ -545,7 +545,7 @@ int main(int argc, char *argv[]) {
     if (arguments.verbose) {
       printf("  RUNNING DELAY KERNEL...");
       printf("   blocks = x: %d y: %d\n", FringeSetblocks.x, FringeSetblocks.y);
-      printf("   threads = %d\n", numffts / 8);
+      printf("   threads = %d\n", delayPhaseThreads);
     }
     timerStart(&timers, "calculateDelaysAndPhases");
     calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads>>>(gpuDelays, lo, sampletime,
