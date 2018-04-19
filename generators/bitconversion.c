@@ -150,7 +150,7 @@ int packBit2(Ipp32f **in, Ipp8u *out, int nchan, float mean, float stddev, int l
 }
 
 
-int packBit8(Ipp32f **in, Ipp8s *out, int nchan, float mean, float stddev, float target, int len) {
+int packBit8(Ipp32f **in, Ipp8s *out, int nchan, int iscomplex, float mean, float stddev, float target, int len) {
   IppStatus status;
 
   for (int i=0; i<nchan; i++) {
@@ -164,13 +164,27 @@ int packBit8(Ipp32f **in, Ipp8s *out, int nchan, float mean, float stddev, float
 
   if (nchan==1) 
     status = ippsConvert_32f8s_Sfs(in[0], out, len, ippRndNear, 0);
-  else {
-    fprintf(stderr, "Error: Do not support %d channels\n", nchan);
+  else if (nchan==2) {
+    if (iscomplex) {
+      status = ippStsNoErr;
+      int o=0;
+      for (int i=0;i<len;i+=2) {
+	out[o++] = in[0][i];
+	out[o++] = in[0][i+1];
+	out[o++] = in[1][i];
+	out[o++] = in[1][i+1];
+      }
+    } else {
+      fprintf(stderr, "Error: Do not support %d channels 8bit\n", nchan);
+      exit(1);
+    }
+  } else {
+    fprintf(stderr, "Error: Do not support %d channels 8bit\n", nchan);
     exit(1);
   }
   
   if (status != ippStsNoErr) {
-    
+    fprintf(stderr, "Error calling ippsConvert_32f8s_Sfs\n");
   }
   return 0;
 }
