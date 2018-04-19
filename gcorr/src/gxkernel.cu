@@ -225,35 +225,36 @@ __global__ void unpack2bit_2chan(cuComplex *dest, const int8_t *src) {
    Number of threads equal to twice the number subints (separate thread per pol)
 */
 
-__global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src) {
-  const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
-  int subintsamples = blockDim.x * gridDim.x/2;
+__global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src, const int32_t *shifts, const int32_t fftsamples) {
+  const size_t isamp = (blockDim.x * blockIdx.x + threadIdx.x); //This can go from 0 ... fftsamples*2 (i.e., number of samples in an FFT * 2 channels)
+  const size_t ifft = blockIdx.y;
+  int subintsamples = fftsamples * gridDim.y;
 
-  int ichan = i*2; // 2 bytes per complex sample
-  int pol = i % 2;
-  int ochan = i/2 + pol*subintsamples;
+  int ibyte = isamp*2; // 2 bytes per complex sample
+  int pol = isamp % 2;
+  int osamp = isamp/2 + pol*subintsamples;
 
-  dest[ochan] = make_cuFloatComplex(src[ichan], src[ichan+1]);
+  dest[ifft*fftsamples + osamp] = make_cuFloatComplex(src[ibyte - shifts[ifft]*4], src[ibyte - shifts[ifft]*4 + 1]);
 }
 
-__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const int32_t *shifts) {
+__global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const int32_t *shifts, const int32_t fftsamples) {
   // static const float HiMag = 3.3359;  // Optimal value
   // const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
-  const size_t i = (blockDim.x * blockIdx.x + threadIdx.x);
-  int subintsamples = 2 * blockDim.x * gridDim.x;
-  int j = i*2;
-  int8_t src_i = src[i]; // Here I am just loading src into local memory to 
-                         // reduce the number of reads from global memory
+  const size_t isample = 2*(blockDim.x * blockIdx.x + threadIdx.x);
+  const size_t ifft = blockIdx.y;
+  int subintsamples = fftsamples * gridDim.y;
+  int8_t src_i = src[(ifft*fftsamples - shifts[ifft] + isample)/2]; // Here I am just loading src into local memory to 
+                                          // reduce the number of reads from global memory
 
   // I have just changed the order of the writes made to dest
   // In theory this should reduce the number of write operations made
   // I have also implemented the use of constant memory for the levels_2bit
   // array
-  dest[j] = make_cuFloatComplex(kLevels_2bit[src_i&0x3], 0);
-  dest[j+1] = make_cuFloatComplex(kLevels_2bit[(src_i>>4)&0x3], 0);
+  dest[isample] = make_cuFloatComplex(kLevels_2bit[src_i&0x3], 0);
+  dest[isample+1] = make_cuFloatComplex(kLevels_2bit[(src_i>>4)&0x3], 0);
 
-  dest[subintsamples + j] = make_cuFloatComplex(kLevels_2bit[(src_i>>2)&0x3], 0);
-  dest[subintsamples + j + 1] = make_cuFloatComplex(kLevels_2bit[(src_i>>6)&0x3], 0);
+  dest[subintsamples + isample] = make_cuFloatComplex(kLevels_2bit[(src_i>>2)&0x3], 0);
+  dest[subintsamples + isample + 1] = make_cuFloatComplex(kLevels_2bit[(src_i>>6)&0x3], 0);
 }
 
 /* Unpack 2bit real data in complex float, assuming 2 interleave channels 

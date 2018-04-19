@@ -306,9 +306,9 @@ int main(int argc, char *argv[]) {
   }
   
   // Calculate the number of FFTs
-  int fftchannels = arguments.nchannels * ((arguments.complexdata == 1) ? 1 : 2);
-  int numffts = arguments.nsamples / fftchannels;
-  printf("fftchannels = %d , numffts is %d\n", fftchannels, numffts);
+  int fftsamples = arguments.nchannels * ((arguments.complexdata == 1) ? 1 : 2);
+  int numffts = arguments.nsamples / fftsamples;
+  printf("fftsamples = %d , numffts is %d\n", fftsamples, numffts);
   if (numffts % 8) {
     printf("Unable to proceed, numffts must be divisible by 8!\n");
     exit(0);
@@ -414,7 +414,7 @@ int main(int argc, char *argv[]) {
     }
     timerStart(&timers, "calculateDelaysAndPhases");
     calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
-							     fftchannels,
+							     fftsamples,
 							     arguments.nchannels,
 							     samplegranularity,
 							     rotationPhaseInfo,
@@ -456,7 +456,7 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "unpack2bit_2chan_fast");
     for (j = 0; j < arguments.nantennas; j++) {
       init_2bitLevels();
-      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], sampleShift);
+      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], &(sampleShift[numffts*j]), fftsamples);
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -469,7 +469,7 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "unpack8bitcomplex_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
       init_2bitLevels();
-      unpack8bitcomplex_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j]);
+      unpack8bitcomplex_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &(sampleShift[numffts*j]), fftsamples);
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -553,7 +553,7 @@ int main(int argc, char *argv[]) {
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
 		       arguments.nsamples * sizeof(cuComplex)));
-  if (rc = cufftPlan1d(&plan, fftchannels, CUFFT_C2C,
+  if (rc = cufftPlan1d(&plan, fftsamples, CUFFT_C2C,
 		       2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
     printf("FFT planning failed! %d\n", rc);
     exit(0);
@@ -628,13 +628,13 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "CrossCorrAccumHoriz");
     CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
 						    arguments.nantennas, numffts,
-						    arguments.nchannels, fftchannels);
+						    arguments.nchannels, fftsamples);
     timerEnd(&timers);
     
     timerStart(&timers, "CCAH2");
     CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
 				      arguments.nantennas, numffts,
-				      arguments.nchannels, fftchannels);
+				      arguments.nchannels, fftsamples);
     timerEnd(&timers);
   }
   timerPrintStatistics(&timers, "CrossCorr", implied_time);
