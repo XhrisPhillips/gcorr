@@ -511,7 +511,7 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_fft, end_test_fft;
   float *dtime_fft=NULL, averagetime_fft = 0.0;
   float mintime_fft = 0.0, maxtime_fft = 0.0;
-  cuComplex *channelisedData, *baselineData;
+  cuComplex *channelisedData;
   int nbaseline = arguments.nantennas * (arguments.nantennas - 1) / 2;
   int parallelAccum = (int)ceil(arguments.nthreads / arguments.nchannels + 1);
   int rc;
@@ -530,8 +530,6 @@ int main(int argc, char *argv[]) {
   printf("  nbaselines = %d\n", nbaseline);
   
   /* Allocate the necessary arrays. */
-  gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
-		       parallelAccum * sizeof(cuComplex)));
   gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
 		       arguments.nsamples * sizeof(cuComplex)));
   if (rc = cufftPlan1d(&plan, fftchannels, CUFFT_C2C,
@@ -575,8 +573,55 @@ int main(int argc, char *argv[]) {
    * This benchmarks the performance of the cross-correlator and accumulator
    * combination.
    */
+  cudaEvent_t start_test_crosscorr, end_test_crosscorr;
+  float *dtime_crosscorr=NULL, averagetime_crosscorr = 0.0;
+  float mintime_crosscorr = 0.0, maxtime_crosscorr = 0.0;
+  int corrThreads, blockchan, nchunk;
+  cuComplex *baselineData;
+  dim3 corrBlocks;
+  dtime_crosscorr = (float *)malloc(arguments.nloops * sizeof(float));
   
+  gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
+		       parallelAccum * sizeof(cuComplex)));
+
+  if (arguments.nchannels <= 512) {
+    corrThreads = arguments.nchannels;
+    blockchan = 1;
+  } else {
+    corrThreads = 512;
+    blockchan = arguments.nchannels / 512;
+  }
+  corrBlocks = dim3(blockchan, parallelAccum);
+  nchunk = numffts / parallelAccum;
   
+  cudaEventCreate(&start_test_crosscorr);
+  cudaEventCreate(&end_test_crosscorr);
+  for (i = 0; i < arguments.nloops; i++) {
+
+    preLaunchCheck();
+    cudaEventRecord(start_test_crosscorr, 0);
+    CrossCorr<<<corrBlocks, corrThreads>>>(channelisedData, baselineData,
+					   arguments.nantennas, nchunk);
+    cudaEventRecord(end_test_crosscorr, 0);
+    cudaEventSynchronize(end_test_crosscorr);
+    cudaEventElapsedTime(&(dtime_crosscorr[i]), start_test_crosscorr,
+			 end_test_crosscorr);
+    postLaunchCheck();
+    
+  }
+  // Do some statistics.
+  (void)time_stats(dtime_crosscorr, arguments.nloops, &averagetime_crosscorr,
+		   &mintime_crosscorr, &maxtime_crosscorr);
+  printf("\n==== ROUTINES: CrossCorr ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_crosscorr, mintime_crosscorr, maxtime_crosscorr, implied_time,
+	 ((implied_time * 1e3) / averagetime_crosscorr));
+
+  
+  cudaEventDestroy(start_test_crosscorr);
+  cudaEventDestroy(end_test_crosscorr);
   
 #endif
   
