@@ -145,7 +145,7 @@ int main (int argc, char * const argv[]) {
 
 
   while (1) {
-    opt = getopt_long_only(argc, argv, "b:w:d:N:s:y:n:c:C:Vpvo1:2:S:", 
+    opt = getopt_long_only(argc, argv, "b:w:d:N:s:y:n:cC:Vpvo1:2:S:", 
 			   options, NULL);
     if (opt==EOF) break;
 
@@ -400,7 +400,7 @@ int main (int argc, char * const argv[]) {
 	if (bits==2) {
 	  unpack2bit(&buf[bytesperfft*i], in, nchan, npoint*2);
 	} else if (bits==8) {
-	  unpack8bit((Ipp8s*)&buf[bytesperfft*i], in, nchan, npoint*2);
+	  unpack8bit((Ipp8s*)&buf[bytesperfft*i], in, nchan, iscomplex, npoint*2);
 	} else if (bits==16) {
 	  unpack16bit((Ipp16s*)&buf[bytesperfft*i], in, nchan, npoint*2);
 	} else {
