@@ -181,6 +181,11 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_unpack3, end_test_unpack3;
   cudaEvent_t start_test_unpack4, end_test_unpack4;
   cudaEvent_t start_test_delaycalc, end_test_delaycalc;
+  dim3 FringeSetblocks;
+  // TODO
+  double *gpuDelays;
+  double lo, sampletime;
+  float *rotationPhaseInfo, *fractionalSampleDelays;
 
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
@@ -189,6 +194,8 @@ int main(int argc, char *argv[]) {
   dtime_delaycalc = (float *)malloc(arguments.nloops * sizeof(float));
   int i, j, unpackBlocks;
 
+  FringeSetblocks = dim3(8, arguments.nantennas);
+  
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
   int packedBytes8 = packedBytes * 4;
@@ -245,8 +252,9 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start_test_delaycalc, 0);
     calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
 							     arguments.nchannels,
+							     arguments.nchannels,
 							     rotationPhaseInfo,
-							     sampleShifts,
+							     sampleShift,
 							     fractionalSampleDelays);
     cudaEventRecord(end_test_delaycalc, 0);
     cudaEventSynchronize(end_test_delaycalc);
@@ -388,13 +396,12 @@ int main(int argc, char *argv[]) {
   float *rotVec;
   cudaEvent_t start_test_fringerotate, end_test_fringerotate;
   cudaEvent_t start_test_fringerotate2, end_test_fringerotate2;
-  dim3 FringeSetblocks, fringeBlocks;
+  dim3 fringeBlocks;
   dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_fringerotate2 = (float *)malloc(arguments.nloops * sizeof(float));
   
   // Work out the block and thread numbers.
   fringeBlocks = dim3((arguments.nchannels / arguments.nthreads), numffts, arguments.nantennas);
-  FringeSetblocks = dim3(8, arguments.nantennas);
   printf("\n\nEach fringe rotation test will run:\n");
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nchannels = %d\n", arguments.nchannels);
