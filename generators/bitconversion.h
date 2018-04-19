@@ -7,7 +7,7 @@ extern Ipp32f lookup[4];
 
 void initlut();
 void unpack2bit(Ipp8u *in, Ipp32f **out, int nchan, int n);
-void unpack8bit(Ipp8s *in, Ipp32f **out, int nchan, int n);
+void unpack8bit(Ipp8s *in, Ipp32f **out, int nchan, int iscomplex, int n);
 void unpack16bit(Ipp16s *in, Ipp32f **out, int nchan, int n);
 void unpackFloat8(Ipp8u *in, Ipp32f **out, int nchan, int n);
 
