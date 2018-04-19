@@ -74,7 +74,6 @@ void timerAdd(struct timerCollection *tc, const char* timerName) {
   tc->timerResults = (float **)realloc(tc->timerResults, tc->nTimers * sizeof(float *));
   tc->timerResults[tc->nTimers - 1] = NULL;
   tc->timerStatistics = (float **)realloc(tc->timerStatistics, tc->nTimers * sizeof(float *));
-  //tc->timerStatistics[tc->nTimers - 1] = (float *)malloc(3 * sizeof(float));
   tc->timerCalculated = (int *)realloc(tc->timerCalculated, tc->nTimers * sizeof(int));
   tc->timerCalculated[tc->nTimers - 1] = 0;
 }
@@ -133,26 +132,6 @@ float timerEnd(struct timerCollection *tc) {
   
   // Return the elapsed time.
   return tc->timerResults[ct][nint];
-}
-
-void time_stats(float *timearray, int ntime, float *average, float *min, float *max) {
-  int i = 0;
-  *average = 0.0;
-  for (i = 1; i < ntime; i++) {
-    *average += timearray[i];
-    if (i == 1) {
-      *min = timearray[i];
-      *max = timearray[i];
-    } else {
-      *min = (timearray[i] < *min) ? timearray[i] : *min;
-      *max = (timearray[i] > *max) ? timearray[i] : *max;
-    }
-  }
-
-  if ((ntime - 1) > 0) {
-    *average /= (float)(ntime - 1);
-  }
-  return;
 }
 
 void time_stats_single(float *timearray, int ntime, float **output) {
