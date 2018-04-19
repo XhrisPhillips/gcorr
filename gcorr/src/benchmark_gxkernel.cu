@@ -174,6 +174,7 @@ int main(int argc, char *argv[]) {
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
   float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
   float averagetime_unpack4 = 0.0, mintime_unpack4 = 0.0, maxtime_unpack4 = 0.0;
+  float averagetime_delaycalc = 0.0, mintime_delaycalc = 0.0, maxtime_delaycalc = 0.0;
   float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
   cudaEvent_t start_test_unpack2, end_test_unpack2;
@@ -365,6 +366,8 @@ int main(int argc, char *argv[]) {
        &mintime_unpack3, &maxtime_unpack3);
   (void)time_stats(dtime_unpack4, arguments.nloops, &averagetime_unpack4,
        &mintime_unpack4, &maxtime_unpack4);
+  (void)time_stats(dtime_delaycalc, arguments.nloops, &averagetime_delaycalc,
+       &mintime_delaycalc, &maxtime_delaycalc);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -374,6 +377,11 @@ int main(int argc, char *argv[]) {
   } else {
     implied_time /= 2 * (float)arguments.bandwidth;
   }
+  printf("\n==== ROUTINE: calculateDelaysAndPhases ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+	 averagetime_delaycalc, mintime_delaycalc, maxtime_delaycalc, implied_time,
+	 ((implied_time * 1e3) / averagetime_delaycalc));
   printf("\n==== ROUTINE: old_unpack2bit_2chan ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
@@ -503,7 +511,7 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_fft, end_test_fft;
   float *dtime_fft=NULL, averagetime_fft = 0.0;
   float mintime_fft = 0.0, maxtime_fft = 0.0;
-  cuComplex *channelisedData, *baselineData;
+  cuComplex *channelisedData;
   int nbaseline = arguments.nantennas * (arguments.nantennas - 1) / 2;
   int parallelAccum = (int)ceil(arguments.nthreads / arguments.nchannels + 1);
   int rc;
@@ -522,8 +530,6 @@ int main(int argc, char *argv[]) {
   printf("  nbaselines = %d\n", nbaseline);
   
   /* Allocate the necessary arrays. */
-  gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
-		       parallelAccum * sizeof(cuComplex)));
   gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
 		       arguments.nsamples * sizeof(cuComplex)));
   if (rc = cufftPlan1d(&plan, fftchannels, CUFFT_C2C,
@@ -562,15 +568,95 @@ int main(int argc, char *argv[]) {
   cudaEventDestroy(start_test_fft);
   cudaEventDestroy(end_test_fft);
   
-#ifndef NOCROSSCORRACCUM
   /*
    * This benchmarks the performance of the cross-correlator and accumulator
    * combination.
    */
+  cudaEvent_t start_test_crosscorr, end_test_crosscorr;
+  cudaEvent_t start_test_accum, end_test_accum;
+  float *dtime_crosscorr=NULL, averagetime_crosscorr = 0.0;
+  float mintime_crosscorr = 0.0, maxtime_crosscorr = 0.0;
+  float *dtime_accum=NULL, averagetime_accum = 0.0;
+  float mintime_accum = 0.0, maxtime_accum = 0.0;
+  int corrThreads, blockchan, nchunk;
+  cuComplex *baselineData;
+  dim3 corrBlocks, accumBlocks;
+  dtime_crosscorr = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_accum = (float *)malloc(arguments.nloops * sizeof(float));
   
+  gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
+		       parallelAccum * sizeof(cuComplex)));
+
+  if (arguments.nchannels <= 512) {
+    corrThreads = arguments.nchannels;
+    blockchan = 1;
+  } else {
+    corrThreads = 512;
+    blockchan = arguments.nchannels / 512;
+  }
+  corrBlocks = dim3(blockchan, parallelAccum);
+  accumBlocks = dim3(blockchan, 4, nbaseline);
+  nchunk = numffts / parallelAccum;
+
+  printf("\n\nEach cross correlation test will run:\n");
+  printf("  parallelAccum = %d\n", parallelAccum);
+  printf("  nbaselines = %d\n", nbaseline);
+  printf("  corrThreads = %d\n", corrThreads);
+  printf("  corrBlocks = x: %d , y: %d, z: %d\n", corrBlocks.x, corrBlocks.y, corrBlocks.z);
+  printf("  accumBlocks = x: %d , y: %d, z: %d\n", accumBlocks.x, accumBlocks.y, accumBlocks.z);
+  printf("  nchunk = %d\n", nchunk);
+
   
+  cudaEventCreate(&start_test_crosscorr);
+  cudaEventCreate(&end_test_crosscorr);
+  cudaEventCreate(&start_test_accum);
+  cudaEventCreate(&end_test_accum);
+  for (i = 0; i < arguments.nloops; i++) {
+
+    preLaunchCheck();
+    cudaEventRecord(start_test_crosscorr, 0);
+    CrossCorr<<<corrBlocks, corrThreads>>>(channelisedData, baselineData,
+					   arguments.nantennas, nchunk);
+    cudaEventRecord(end_test_crosscorr, 0);
+    cudaEventSynchronize(end_test_crosscorr);
+    cudaEventElapsedTime(&(dtime_crosscorr[i]), start_test_crosscorr,
+			 end_test_crosscorr);
+    postLaunchCheck();
+
+    preLaunchCheck();
+    cudaEventRecord(start_test_accum, 0);
+    finaliseAccum<<<accumBlocks, corrThreads>>>(baselineData, parallelAccum, nchunk);
+    cudaEventRecord(end_test_accum, 0);
+    cudaEventSynchronize(end_test_accum);
+    cudaEventElapsedTime(&(dtime_accum[i]), start_test_accum,
+			 end_test_accum);
+    postLaunchCheck();
+    
+  }
+  // Do some statistics.
+  (void)time_stats(dtime_crosscorr, arguments.nloops, &averagetime_crosscorr,
+		   &mintime_crosscorr, &maxtime_crosscorr);
+  printf("\n==== ROUTINES: CrossCorr ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_crosscorr, mintime_crosscorr, maxtime_crosscorr, implied_time,
+	 ((implied_time * 1e3) / averagetime_crosscorr));
+  (void)time_stats(dtime_accum, arguments.nloops, &averagetime_accum,
+		   &mintime_accum, &maxtime_accum);
+  printf("\n==== ROUTINES: finaliseAccum ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_accum, mintime_accum, maxtime_accum, implied_time,
+	 ((implied_time * 1e3) / averagetime_accum));
+
   
-#endif
+  cudaEventDestroy(start_test_crosscorr);
+  cudaEventDestroy(end_test_crosscorr);
+  cudaEventDestroy(start_test_accum);
+  cudaEventDestroy(end_test_accum);
+  
   
 }
 

@@ -67,8 +67,13 @@ int main(int argc, char *argv[])
   allocDataHost(&inputdata, numantennas, numchannels, numffts, nbit, nPol, iscomplex, subintbytes);
 
   //openFiles(antennas, antFiles, antStream);
-  for (int i=0; i<numantennas; i++) {
+  for (int i=0; i<numantennas; i++)
+  {
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
+    if (!antStream.back()->good())
+    {
+      cerr << "Problem with file " << antFiles[i] << " - does it exist?" << endl;
+    }
   }
 
   // create the FxKernel
