@@ -578,9 +578,9 @@ int main(int argc, char *argv[]) {
   float mintime_crosscorr = 0.0, maxtime_crosscorr = 0.0;
   float *dtime_accum=NULL, averagetime_accum = 0.0;
   float mintime_accum = 0.0, maxtime_accum = 0.0;
-  int corrThreads, blockchan, nchunk;
+  int corrThreads, blockchan, nchunk, ccblock_width = 128;
   cuComplex *baselineData;
-  dim3 corrBlocks, accumBlocks;
+  dim3 corrBlocks, accumBlocks, ccblock;
   dtime_crosscorr = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_accum = (float *)malloc(arguments.nloops * sizeof(float));
   
@@ -596,6 +596,8 @@ int main(int argc, char *argv[]) {
   }
   corrBlocks = dim3(blockchan, parallelAccum);
   accumBlocks = dim3(blockchan, 4, nbaseline);
+  ccblock = dim3((1 + (arguments.nchannels - 1) / ccblock_width),
+		 arguments.nantennas - 1, arguments.nantennas - 1);
   nchunk = numffts / parallelAccum;
 
   printf("\n\nEach cross correlation test will run:\n");
@@ -605,6 +607,8 @@ int main(int argc, char *argv[]) {
   printf("  corrBlocks = x: %d , y: %d, z: %d\n", corrBlocks.x, corrBlocks.y, corrBlocks.z);
   printf("  accumBlocks = x: %d , y: %d, z: %d\n", accumBlocks.x, accumBlocks.y, accumBlocks.z);
   printf("  nchunk = %d\n", nchunk);
+  printf("  ccblock_width = %d\n", ccblock_width);
+  printf("  ccblock = x: %d , y: %d, z: %d\n", ccblock.x, ccblock.y, ccblock.z);
 
   
   cudaEventCreate(&start_test_crosscorr);
