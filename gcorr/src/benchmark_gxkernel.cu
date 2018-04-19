@@ -617,6 +617,8 @@ int main(int argc, char *argv[]) {
   
   cudaEventCreate(&start_test_crosscorr);
   cudaEventCreate(&end_test_crosscorr);
+  cudaEventCreate(&start_test_crosscorr2);
+  cudaEventCreate(&end_test_crosscorr2);
   cudaEventCreate(&start_test_accum);
   cudaEventCreate(&end_test_accum);
   for (i = 0; i < arguments.nloops; i++) {
@@ -681,6 +683,8 @@ int main(int argc, char *argv[]) {
   
   cudaEventDestroy(start_test_crosscorr);
   cudaEventDestroy(end_test_crosscorr);
+  cudaEventDestroy(start_test_crosscorr2);
+  cudaEventDestroy(end_test_crosscorr2);
   cudaEventDestroy(start_test_accum);
   cudaEventDestroy(end_test_accum);
   
