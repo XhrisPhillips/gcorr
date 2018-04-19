@@ -149,6 +149,12 @@ int main(int argc, char *argv[]) {
   // Always discard the first trial.
   arguments.nloops += 1;
 
+  // Calculate the samplegranularity
+  int samplegranularity = 8 / (arguments.nbits * npolarisations);
+  if (samplegranularity < 1)
+  {
+    samplegranularity = 1;
+  }
   
   // Calculate the number of FFTs
   int fftchannels = arguments.nchannels * ((arguments.complexdata == 1) ? 1 : 2);
@@ -280,6 +286,7 @@ int main(int argc, char *argv[]) {
     calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
 							     fftchannels,
 							     arguments.nchannels,
+							     samplegranularity,
 							     rotationPhaseInfo,
 							     sampleShift,
 							     fractionalSampleDelays);
