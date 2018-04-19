@@ -170,7 +170,7 @@ __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
 */
 
 __global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValues,
-				     int numchannels, int fftchannels, int numffts, int subintsamples) {
+				     int numchannels, int fftsamples, int numffts, int subintsamples) {
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
   size_t iant = blockIdx.z;
@@ -181,8 +181,8 @@ __global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValue
   float dslope = fractionalDelayValues[iant*numffts + ifft];
   float theta = ichan*dslope;
 
-  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftchannels, subintsamples)], theta);
-  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftchannels, subintsamples)], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftsamples, subintsamples)], theta);
+  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftsamples, subintsamples)], theta);
 }
 
 
