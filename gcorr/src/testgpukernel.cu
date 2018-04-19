@@ -217,8 +217,8 @@ int main(int argc, char *argv[])
     cfactor = 2; // If real data FFT size twice size of number of frequecy channels
   }
 
-  int fftchannels = numchannels*cfactor;
-  int subintsamples = numffts*fftchannels;  // Number of time samples - need to factor # channels (pols) also
+  int fftsamples = numchannels*cfactor;
+  int subintsamples = numffts*fftsamples;  // Number of time samples - need to factor # channels (pols) also
   cout << "Subintsamples= " << subintsamples << endl;
 
   sampletime = 1.0/bandwidth;
@@ -228,6 +228,36 @@ int main(int argc, char *argv[])
 
   // Setup threads and blocks for the various kernels
   // Unpack
+  int unpackThreads, blockchan;
+  int idealthreads; 
+  if (nbit==2 && !iscomplex)
+  {
+    idealthreads = fftsamples/2;
+  }
+  else if (nbit==8 && iscomplex)
+  {
+    idealthreads = fftsamples*2;
+  } 
+  else
+  {
+    cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
+    exit(1);
+  }
+
+  if (idealthreads<=NTHREADS) {
+    unpackThreads = idealthreads;
+    blockchan = 1;
+  } else {
+    unpackThreads = NTHREADS;
+    blockchan = idealthreads/(NTHREADS);
+    if (idealthreads%(NTHREADS)) {
+      cerr << "Error: NTHREADS not divisible into fftsamples" << endl;
+      exit(1);
+    }
+  }
+  dim3 unpackBlocks = dim3(blockchan, numffts);
+
+  /*
   int unpackThreads = NTHREADS;
   int unpackBlocks;
   if (nbit==2 && !iscomplex) {
@@ -245,18 +275,19 @@ int main(int argc, char *argv[])
   } else {
     cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
     exit(1);
-  }
+  }*/
+  
 
   // Fringe Rotate
-  int fringeThreads, blockchan;
-  if (fftchannels<=NTHREADS) {
-    fringeThreads = fftchannels;
+  int fringeThreads;
+  if (fftsamples<=NTHREADS) {
+    fringeThreads = fftsamples;
     blockchan = 1;
   } else {
     fringeThreads = NTHREADS;
-    blockchan = fftchannels/NTHREADS;
-    if (fftchannels%NTHREADS) {
-      cerr << "Error: NTHREADS not divisible into fftchannels" << endl;
+    blockchan = fftsamples/NTHREADS;
+    if (fftsamples%NTHREADS) {
+      cerr << "Error: NTHREADS not divisible into fftsamples" << endl;
       exit(1);
     }
   }
@@ -271,7 +302,7 @@ int main(int argc, char *argv[])
     fracDelayThreads = NTHREADS;
     blockchan = numchannels/NTHREADS;
     if (numchannels%NTHREADS) {
-      cerr << "Error: NTHREADS not divisible into fftchannels" << endl;
+      cerr << "Error: NTHREADS not divisible into fftsamples" << endl;
       exit(1);
     }
   }
@@ -324,7 +355,7 @@ int main(int argc, char *argv[])
   }
 
   // Configure CUFFT
-  if (cufftPlan1d(&plan, fftchannels, CUFFT_C2C, nPol*numantennas*numffts) != CUFFT_SUCCESS) {
+  if (cufftPlan1d(&plan, fftsamples, CUFFT_C2C, nPol*numantennas*numffts) != CUFFT_SUCCESS) {
     cout << "CUFFT error: Plan creation failed" << endl;
     return(0);
   }
@@ -359,7 +390,7 @@ int main(int argc, char *argv[])
   for (int l=0; l<arguments.nloops; l++)
   {
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
-    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftchannels, numchannels, 
+    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftsamples, numchannels, 
                                                              samplegranularity, rotationPhaseInfo, 
                                                              sampleShifts, fractionalSampleDelays);
     CudaCheckError();
@@ -368,9 +399,9 @@ int main(int argc, char *argv[])
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
       if (nbit==2 && !iscomplex) {
-	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]));
+	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]), fftsamples);
       } else if (nbit==8 && iscomplex) {
-	unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i]);
+	unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]), fftsamples);
       }
       CudaCheckError();
     }
@@ -391,8 +422,8 @@ int main(int argc, char *argv[])
     }
 
     // Fractional Delay Correction
-    //FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData, fractionalDelayValues, numchannels, fftchannels, numffts, subintsamples);
-    //CudaCheckError();
+    FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData, fractionalSampleDelays, numchannels, fftsamples, numffts, subintsamples);
+    CudaCheckError();
     
     // Cross correlate
     gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
@@ -407,12 +438,12 @@ int main(int argc, char *argv[])
 #elif 0
     int ccblock_width = 128;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, numantennas-1, numantennas-1);
-    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftchannels);
+    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
 #else
     int ccblock_width = 128;
     int nantxp = numantennas*2;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-    CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftchannels);
+    CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
 #endif
   }
   
