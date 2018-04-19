@@ -228,8 +228,10 @@ int main(int argc, char *argv[]) {
     }
     antfileoffsets[i] = (double)rand();
   }
-  gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4]), delays[i], 3 * sizeof(double), cudaMemcpyHostToDevice));
-  gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4 + 3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice));
+  for (i = 0; i < arguments.nantennas; i++) {
+    gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4]), delays[i], 3 * sizeof(double), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4 + 3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice));
+  }
 
   // Generate some random numbers, and some not so random.
   lo = (double)rand();
