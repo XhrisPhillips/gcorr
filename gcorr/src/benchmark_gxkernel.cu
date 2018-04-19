@@ -74,7 +74,7 @@ void timerAdd(struct timerCollection *tc, const char* timerName) {
   tc->timerResults = (float **)realloc(tc->timerResults, tc->nTimers * sizeof(float *));
   tc->timerResults[tc->nTimers - 1] = NULL;
   tc->timerStatistics = (float **)realloc(tc->timerStatistics, tc->nTimers * sizeof(float *));
-  tc->timerStatistics[tc->nTimers - 1] = (float *)malloc(3 * sizeof(float));
+  //tc->timerStatistics[tc->nTimers - 1] = (float *)malloc(3 * sizeof(float));
   tc->timerCalculated = (int *)realloc(tc->timerCalculated, tc->nTimers * sizeof(int));
   tc->timerCalculated[tc->nTimers - 1] = 0;
 }
@@ -155,6 +155,29 @@ void time_stats(float *timearray, int ntime, float *average, float *min, float *
   return;
 }
 
+void time_stats_single(float *timearray, int ntime, float **output) {
+  int i = 0;
+  *output = (float *)malloc(3 * sizeof(float));
+
+  *output[0] = 0.0;
+  for (i = 1; i < ntime; i++) {
+    *output[0] += timearray[i];
+    if (i == 1) {
+      *output[1] = timearray[i];
+      *output[2] = timearray[i];
+    } else {
+      *output[1] = (timearray[i] < *output[1]) ? timearray[i] : *output[1];
+      *output[2] = (timearray[i] > *output[2]) ? timearray[i] : *output[2];
+    }
+  }
+
+  if ((ntime - 1) > 0) {
+    *output[0] /= (float)(ntime - 1);
+  }
+
+  return;
+			   
+}
 
 void timerPrintStatistics(struct timerCollection *tc, const char *timerName, float implied_time) {
   // Calculate statistics if required and print the output.
@@ -171,10 +194,8 @@ void timerPrintStatistics(struct timerCollection *tc, const char *timerName, flo
   if (c >= 0) {
     if (tc->timerCalculated[c] == 0) {
       // Calculate the statistics.
-      (void)time_stats(tc->timerResults[c], tc->numIterations[c],
-		       &(tc->timerStatistics[c][0]),
-		       &(tc->timerStatistics[c][1]),
-		       &(tc->timerStatistics[c][2]));
+      (void)time_stats_single(tc->timerResults[c], tc->numIterations[c],
+			      &(tc->timerStatistics[c]));
       tc->timerCalculated[c] = 1;
     }
     printf("\n==== TIMER: %s ====\n", tc->timerNames[c]);
