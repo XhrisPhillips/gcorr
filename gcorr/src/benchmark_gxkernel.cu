@@ -517,8 +517,8 @@ int main(int argc, char *argv[]) {
   sampletime = (arguments.complexdata == 1) ? (1.0 / arguments.bandwidth) : (1.0 / (2 * arguments.bandwidth));
   
   
-  unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
-  printf("Each unpacking test will run with %d threads, %d x %d blocks\n", arguments.nthreads, unpackBlocks.x, unpackBlocks.y);
+  //unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
+  printf("Each unpacking test will run with %d threads, %d x %d blocks\n", unpackThreads, unpackBlocks.x, unpackBlocks.y);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
   
@@ -626,7 +626,14 @@ int main(int argc, char *argv[]) {
   timerPrintStatistics(&timers, "unpack2bit_2chan_fast", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack8bitcomplex_2chan", implied_time, jsonvis);
 
-
+  // Free some memory.
+  for (i = 0; i < arguments.nantennas; i++) {
+    cudaFree(packedData[i]);
+    cudaFree(packedData8[i]);
+    cudaFree(unpacked[i]);
+  }
+  cudaFree(unpackedData);
+  
   /*
    * This benchmarks the performance of the fringe rotator kernel.
    */
@@ -707,6 +714,14 @@ int main(int argc, char *argv[]) {
   }
   cufftDestroy(plan);
   timerPrintStatistics(&timers, "cufftExecC2C", implied_time, jsonvis);
+
+  // Free some memory.
+  cudaFree(rotVec);
+  cudaFree(unpackedData2);
+  cudaFree(sampleShift);
+  cudaFree(rotationPhaseInfo);
+  cudaFree(fractionalSampleDelays);
+  cudaFree(gpuDelays);
   
   /*
    * This benchmarks the performance of the cross-correlator and accumulator

@@ -101,7 +101,7 @@ __global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double s
   sampleShifts[iant*numffts + ifft] = netdelaysamples;
 
   // Save the fractional delay
-  fractionaldelay = (float)(-(netdelaysamples_f - netdelaysamples)*2*M_PI/fftchannels);  // radians per FFT channel
+  fractionaldelay = (float)(-(netdelaysamples_f - netdelaysamples)*2*M_PI/fftsamples);  // radians per FFT channel
   fractionalSampleDelays[iant*numffts + ifft] = fractionaldelay;
 
   // set the fringe rotation phase for the first sample of a given FFT of a given antenna
@@ -182,18 +182,13 @@ __global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValue
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
   size_t iant = blockIdx.z;
-  //int numffts = gridDim.y;
-  //int subintsamples = numffts * fftsize;
 
   // phase and slope for this FFT
   float dslope = fractionalDelayValues[iant*numffts + ifft];
   float theta = ichan*dslope;
-
   cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftsamples, subintsamples)], theta);
   cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftsamples, subintsamples)], theta);
 }
-
-
 
 //__constant__ float levels_2bit[4];
 __constant__ float kLevels_2bit[4];
