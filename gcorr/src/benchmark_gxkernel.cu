@@ -153,6 +153,7 @@ int main(int argc, char *argv[]) {
   // Calculate the number of FFTs
   int fftchannels = arguments.nchannels * (arguments.complexdata == 1) ? 1 : 2;
   int numffts = arguments.nsamples / fftchannels;
+  printf("numffts is %d\n", numffts);
   if (numffts % 8) {
     printf("Unable to proceed, numffts must be divisible by 8!\n");
     exit(0);
