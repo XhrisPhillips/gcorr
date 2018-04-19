@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <strings.h>
 #include <argp.h>
 #include <complex.h>
@@ -158,7 +159,102 @@ void time_stats_single(float *timearray, int ntime, float **output) {
 			   
 }
 
-void timerPrintStatistics(struct timerCollection *tc, const char *timerName, float implied_time) {
+
+void prepareJson(FILE **fp, char *filename) {
+  *fp = fopen(filename, "w");
+  fprintf(*fp, "{ ");
+  printf("JSON file %s opened for writing\n", filename);
+}
+
+void closeJson(FILE *fp) {
+  if (fp == NULL) return;
+
+  fprintf(fp, " }\n");
+  fclose(fp);
+}
+
+void startJsonObject(FILE *fp, const char *tag, int first) {
+  if (fp == NULL) return;
+
+  if (first == 1) {
+    fprintf(fp, "\"%s\":", tag);
+  } else {
+    fprintf(fp, ",\"%s\":", tag);
+  }    
+  fprintf(fp, "{");
+}
+
+void endJsonObject(FILE *fp) {
+  if (fp == NULL) return;
+
+  fprintf(fp, "}");
+}
+
+void writeJsonValue(FILE *fp, const char *type, int first, const char *tag, ...) {
+  if (fp == NULL) return;
+
+  va_list ap;
+  va_start(ap, tag);
+  
+  if (first == 1) {
+    fprintf(fp, "\"%s\":", tag);
+  } else {
+    fprintf(fp, ",\"%s\":", tag);
+  }    
+  if (strcmp(type, "int") == 0) {
+    int v = va_arg(ap, int);
+    fprintf(fp, "%d", v);
+  } else if (strcmp(type, "float") == 0) {
+    double v = va_arg(ap, double);
+    fprintf(fp, "%f", (float)v);
+  } else if (strcmp(type, "string") == 0) {
+    char *v = va_arg(ap, char*);
+    fprintf(fp, "\"%s\"", v);
+  }
+}
+
+void writeJsonArray(FILE *fp, const char *type, int first, const char *tag, int len, ...) {
+  if (fp == NULL) return;
+
+  va_list ap;
+  va_start(ap, len);
+  
+  if (first == 1) {
+    fprintf(fp, "\"%s\": [", tag);
+  } else {
+    fprintf(fp, ",\"%s\": [", tag);
+  }    
+  int i;
+  if (strcmp(type, "int") == 0) {
+    int *iarr = va_arg(ap, int*);
+    for (i = 0; i < len; i++) {
+      if (i > 0) {
+	fprintf(fp, ",");
+      }
+      fprintf(fp, "%d", iarr[i]);
+    }
+  } else if (strcmp(type, "float") == 0) {
+    float *farr = va_arg(ap, float*);
+    for (i = 0; i < len; i++) {
+      if (i > 0) {
+	fprintf(fp, ",");
+      }
+      fprintf(fp, "%f", farr[i]);
+    }
+  } else if (strcmp(type, "string") == 0) {
+    char **carr = va_arg(ap, char**);
+    for (i = 0; i < len; i++) {
+      if (i > 0) {
+	fprintf(fp, ",");
+      }
+      fprintf(fp, "\"%s\"", carr[i]);
+    }
+  }
+  fprintf(fp, "]");
+}
+
+void timerPrintStatistics(struct timerCollection *tc, const char *timerName,
+			  float implied_time, FILE *fp) {
   // Calculate statistics if required and print the output.
   int i, c = -1;
 
@@ -177,12 +273,20 @@ void timerPrintStatistics(struct timerCollection *tc, const char *timerName, flo
 			      &(tc->timerStatistics[c]));
       tc->timerCalculated[c] = 1;
     }
+    startJsonObject(fp, timerName, 0);
     printf("\n==== TIMER: %s ====\n", tc->timerNames[c]);
     printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
     printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
 	   (tc->numIterations[c] - 1), (tc->timerStatistics[c][0]),
 	   (tc->timerStatistics[c][1]), (tc->timerStatistics[c][2]),
 	   implied_time, ((implied_time * 1e3) / tc->timerStatistics[c][0]));
+    writeJsonValue(fp, "int", 1, "niterations", (tc->numIterations[c] - 1));
+    writeJsonValue(fp, "float", 0, "average", tc->timerStatistics[c][0]);
+    writeJsonValue(fp, "float", 0, "minimum", tc->timerStatistics[c][1]);
+    writeJsonValue(fp, "float", 0, "maximum", tc->timerStatistics[c][2]);
+    writeJsonValue(fp, "float", 0, "speedup", ((implied_time * 1e3) / tc->timerStatistics[c][0]));
+    
+    endJsonObject(fp);
   }
 }
 
@@ -201,6 +305,7 @@ static struct argp_option options[] = {
   { "verbose", 'v', 0, 0, "output more" },
   { "bits", 'B', "NBITS", 0, "number of bits assumed in the data" },
   { "complex", 'I', 0, 0, "the data input is complex sampled" },
+  { "json", 'j', "JSONFILE", 0, "output the timing data to this JSON file" },
   { 0 }
 };
 
@@ -214,6 +319,7 @@ struct arguments {
   int verbose;
   int nbits;
   int complexdata;
+  char jsonfile[256];
 };
 
 /* The option parser */
@@ -248,12 +354,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   case 'C':
     arguments->complexdata = 1;
     break;
+  case 'j':
+    strncpy(arguments->jsonfile, arg, 256);
+    break;
   }
   return 0;
 }
 
 /* The argp parser */
 static struct argp argp = { options, parse_opt, args_doc, doc };
+
 
 
 int main(int argc, char *argv[]) {
@@ -269,11 +379,19 @@ int main(int argc, char *argv[]) {
   arguments.verbose = 0;
   arguments.nbits = 2;
   arguments.complexdata = 0;
+  arguments.jsonfile[0] = 0;
   int npolarisations = 2;
   curandGenerator_t gen;
+
+  FILE *jsonvis = NULL;
   
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
+  // Prepare a JSON file if necessary.
+  if (strlen(arguments.jsonfile) > 0) {
+    prepareJson(&jsonvis, arguments.jsonfile);
+  }
+  
   // Always discard the first trial.
   arguments.nloops += 1;
 
@@ -293,6 +411,15 @@ int main(int argc, char *argv[]) {
     exit(0);
   }
 
+  // Output our parameters.
+  writeJsonValue(jsonvis, "int", 1, "nantennas", arguments.nantennas);
+  writeJsonValue(jsonvis, "int", 0, "nsamples", arguments.nsamples);
+  writeJsonValue(jsonvis, "int", 0, "nchannels", arguments.nchannels);
+  writeJsonValue(jsonvis, "int", 0, "complexdata", arguments.complexdata);
+  writeJsonValue(jsonvis, "int", 0, "samplegranularity", samplegranularity);
+  writeJsonValue(jsonvis, "int", 0, "fftsamples", fftsamples);
+  writeJsonValue(jsonvis, "int", 0, "numffts", numffts);
+  
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
   // Our collection of timers.
@@ -464,11 +591,11 @@ int main(int argc, char *argv[]) {
   } else {
     implied_time /= 2 * (float)arguments.bandwidth;
   }
-  timerPrintStatistics(&timers, "calculateDelaysAndPhases", implied_time);
-  timerPrintStatistics(&timers, "old_unpack2bit_2chan", implied_time);
-  timerPrintStatistics(&timers, "unpack2bit_2chan", implied_time);
-  timerPrintStatistics(&timers, "unpack2bit_2chan_fast", implied_time);
-  timerPrintStatistics(&timers, "unpack8bitcomplex_2chan", implied_time);
+  timerPrintStatistics(&timers, "calculateDelaysAndPhases", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "old_unpack2bit_2chan", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack2bit_2chan", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack2bit_2chan_fast", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack8bitcomplex_2chan", implied_time, jsonvis);
 
 
   /*
@@ -508,8 +635,8 @@ int main(int argc, char *argv[]) {
     timerEnd(&timers);
     
   }
-  timerPrintStatistics(&timers, "FringeRotate", implied_time);
-  timerPrintStatistics(&timers, "FringeRotate2", implied_time);
+  timerPrintStatistics(&timers, "FringeRotate", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "FringeRotate2", implied_time, jsonvis);
 
   /*
    * This benchmarks the performance of the FFT.
@@ -550,7 +677,7 @@ int main(int argc, char *argv[]) {
 
   }
   cufftDestroy(plan);
-  timerPrintStatistics(&timers, "cufftExecC2C", implied_time);
+  timerPrintStatistics(&timers, "cufftExecC2C", implied_time, jsonvis);
   
   /*
    * This benchmarks the performance of the cross-correlator and accumulator
@@ -616,11 +743,12 @@ int main(int argc, char *argv[]) {
 				      arguments.nchannels, fftsamples);
     timerEnd(&timers);
   }
-  timerPrintStatistics(&timers, "CrossCorr", implied_time);
-  timerPrintStatistics(&timers, "finaliseAccum", implied_time);
-  timerPrintStatistics(&timers, "CrossCorrAccumHoriz", implied_time);
-  timerPrintStatistics(&timers, "CCAH2", implied_time);
+  timerPrintStatistics(&timers, "CrossCorr", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "finaliseAccum", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "CrossCorrAccumHoriz", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "CCAH2", implied_time, jsonvis);
   
+  closeJson(jsonvis);
   
 }
 
