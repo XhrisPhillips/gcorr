@@ -544,7 +544,7 @@ int main(int argc, char *argv[]) {
     // Run the delay calculator.
     if (arguments.verbose) {
       printf("  RUNNING DELAY KERNEL...");
-      printf("   blocks = x: %d y: %d\n", FringeSetblocks.x, FringeSetblocks.y);
+      printf("   blocks = x: %d y: %d\n", delayPhaseBlocks.x, delayPhaseBlocks.y);
       printf("   threads = %d\n", delayPhaseThreads);
     }
     timerStart(&timers, "calculateDelaysAndPhases");
