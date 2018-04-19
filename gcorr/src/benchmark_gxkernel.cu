@@ -163,6 +163,7 @@ void time_stats_single(float *timearray, int ntime, float **output) {
 void prepareJson(FILE **fp, char *filename) {
   *fp = fopen(filename, "w");
   fprintf(*fp, "{ ");
+  printf("JSON file %s opened for writing\n", filename);
 }
 
 void closeJson(FILE *fp) {
