@@ -174,6 +174,7 @@ int main(int argc, char *argv[]) {
   float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
   float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
   float averagetime_unpack4 = 0.0, mintime_unpack4 = 0.0, maxtime_unpack4 = 0.0;
+  float averagetime_delaycalc = 0.0, mintime_delaycalc = 0.0, maxtime_delaycalc = 0.0;
   float implied_time;
   cudaEvent_t start_test_unpack, end_test_unpack;
   cudaEvent_t start_test_unpack2, end_test_unpack2;
@@ -365,6 +366,8 @@ int main(int argc, char *argv[]) {
        &mintime_unpack3, &maxtime_unpack3);
   (void)time_stats(dtime_unpack4, arguments.nloops, &averagetime_unpack4,
        &mintime_unpack4, &maxtime_unpack4);
+  (void)time_stats(dtime_delaycalc, arguments.nloops, &averagetime_delaycalc,
+       &mintime_delaycalc, &maxtime_delaycalc);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -374,6 +377,11 @@ int main(int argc, char *argv[]) {
   } else {
     implied_time /= 2 * (float)arguments.bandwidth;
   }
+  printf("\n==== ROUTINE: calculateDelaysAndPhases ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
+	 averagetime_delaycalc, mintime_delaycalc, maxtime_delaycalc, implied_time,
+	 ((implied_time * 1e3) / averagetime_delaycalc));
   printf("\n==== ROUTINE: old_unpack2bit_2chan ====\n");
   printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
   printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
