@@ -181,7 +181,7 @@ void startJsonObject(FILE *fp, const char *tag, int first) {
   } else {
     fprintf(fp, ",\"%s\":", tag);
   }    
-  fprintf(fp, "\"%s\": {", tag);
+  fprintf(fp, "{");
 }
 
 void endJsonObject(FILE *fp) {
