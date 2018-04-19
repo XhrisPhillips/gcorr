@@ -149,12 +149,10 @@ int main(int argc, char *argv[]) {
   // Always discard the first trial.
   arguments.nloops += 1;
 
-  // Calculate the number of FFTs  
-  int numffts = arguments.nsamples / arguments.nchannels;
-  if (arguments.complexdata == 0)
-  {
-    numffts /= 2;
-  }
+  
+  // Calculate the number of FFTs
+  int fftchannels = arguments.nchannels * (arguments.complexdata == 1) ? 1 : 2;
+  int numffts = arguments.nsamples / fftchannels;
   if (numffts % 8) {
     printf("Unable to proceed, numffts must be divisible by 8!\n");
     exit(0);
@@ -182,9 +180,9 @@ int main(int argc, char *argv[]) {
   cudaEvent_t start_test_unpack4, end_test_unpack4;
   cudaEvent_t start_test_delaycalc, end_test_delaycalc;
   dim3 FringeSetblocks;
-  // TODO
-  double *gpuDelays;
+  double *gpuDelays, **delays, *antfileoffsets;
   double lo, sampletime;
+  // TODO
   float *rotationPhaseInfo, *fractionalSampleDelays;
 
   dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
@@ -215,6 +213,28 @@ int main(int argc, char *argv[]) {
   /* Allocate memory for the sample shifts vector */
   gpuErrchk(cudaMalloc(&sampleShift, arguments.nantennas * numffts * sizeof(int)));
   gpuErrchk(cudaMemset(sampleShift, 0, arguments.nantennas * numffts * sizeof(int)));
+  gpuErrchk(cudaMalloc(&rotationPhaseInfo, arguments.nantennas * numffts * 2 * sizeof(float)));
+  gpuErrchk(cudaMalloc(&fractionalSampleDelays, arguments.nantennas * numffts * 2 * sizeof(float)));
+  
+  // Copy the delays to the GPU.
+  gpuErrchk(cudaMalloc(&gpuDelays, arguments.nantennas * 4 * sizeof(double)));
+  delays = new double*[arguments.nantennas];
+  antfileoffsets = new double[arguments.nantennas];
+  srand(time(NULL));
+  for (i = 0; i < arguments.nantennas; i++) {
+    delays[i] = new double[3];
+    for (j = 0; j < 3; j++) {
+      delays[i][j] = (double)rand();
+    }
+    antfileoffsets[i] = (double)rand();
+  }
+  gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4]), delays[i], 3 * sizeof(double), cudaMemcpyHostToDevice));
+  gpuErrchk(cudaMemcpy(&(gpuDelays[i * 4 + 3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice));
+
+  // Generate some random numbers, and some not so random.
+  lo = (double)rand();
+  sampletime = (arguments.complexdata == 1) ? (1.0 / arguments.bandwidth) : (1.0 / (2 * arguments.bandwidth));
+  
   
   unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
   printf("Each unpacking test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
@@ -251,7 +271,7 @@ int main(int argc, char *argv[]) {
     }
     cudaEventRecord(start_test_delaycalc, 0);
     calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
-							     arguments.nchannels,
+							     fftchannels,
 							     arguments.nchannels,
 							     rotationPhaseInfo,
 							     sampleShift,
@@ -500,7 +520,7 @@ int main(int argc, char *argv[]) {
 		       parallelAccum * sizeof(cuComplex)));
   gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
 		       arguments.nsamples * sizeof(cuComplex)));
-  if (rc = cufftPlan1d(&plan, arguments.nchannels, CUFFT_C2C,
+  if (rc = cufftPlan1d(&plan, fftchannels, CUFFT_C2C,
 		       2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
     printf("FFT planning failed! %d\n", rc);
     exit(0);
