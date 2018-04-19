@@ -435,14 +435,43 @@ int main(int argc, char *argv[]) {
   int8_t **packedData, **packedData8;
   int32_t *sampleShift;
   float implied_time;
-  dim3 FringeSetblocks;
+  dim3 FringeSetblocks, unpackBlocks;
   double *gpuDelays, **delays, *antfileoffsets;
   double lo, sampletime;
   float *rotationPhaseInfo, *fractionalSampleDelays;
 
-  int i, j, unpackBlocks;
+  int i, j, unpackThreads, executionsperthread = 1, numkernelexecutions;
+  int delayPhaseThreads;
 
+  numkernelexecutions = fftsamples;
+  if (numkernelexecutions <= arguments.nthreads) {
+    unpackThreads = numkernelexecutions;
+    executionsperthread = 1;
+  } else {
+    unpackThreads = arguments.nthreads;
+    executionsperthread = numkernelexecutions / arguments.nthreads;
+    if (numkernelexecutions % arguments.nthreads) {
+      printf("Error: number of threads not divisible into number of kernel executions!\n");
+      exit(0);
+    }
+  }
+
+  unpackBlocks = dim3(executionsperthread, numffts);
   FringeSetblocks = dim3(8, arguments.nantennas);
+
+  numkernelexecutions = numffts;
+  if (numkernelexecutions <= arguments.nthreads) {
+    delayPhaseThreads = numkernelexecutions;
+    executionsperthread = 1;
+  } else {
+    delayPhaseThreads = arguments.nthreads;
+    executionsperthread = numkernelexecutions / arguments.nthreads;
+    if (numkernelexecutions % arguments.nthreads) {
+      printf("Error: number of threads not divisible into number of kernel executions!\n");
+      exit(0);
+    }
+  }
+  dim3 delayPhaseBlocks = dim3(executionsperthread, arguments.nantennas);
   
   // Allocate the memory.
   int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
@@ -488,8 +517,8 @@ int main(int argc, char *argv[]) {
   sampletime = (arguments.complexdata == 1) ? (1.0 / arguments.bandwidth) : (1.0 / (2 * arguments.bandwidth));
   
   
-  unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
-  printf("Each unpacking test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
+  //unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
+  printf("Each unpacking test will run with %d threads, %d x %d blocks\n", unpackThreads, unpackBlocks.x, unpackBlocks.y);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
   
@@ -515,17 +544,17 @@ int main(int argc, char *argv[]) {
     // Run the delay calculator.
     if (arguments.verbose) {
       printf("  RUNNING DELAY KERNEL...");
-      printf("   blocks = x: %d y: %d\n", FringeSetblocks.x, FringeSetblocks.y);
-      printf("   threads = %d\n", numffts / 8);
+      printf("   blocks = x: %d y: %d\n", delayPhaseBlocks.x, delayPhaseBlocks.y);
+      printf("   threads = %d\n", delayPhaseThreads);
     }
     timerStart(&timers, "calculateDelaysAndPhases");
-    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
-							     fftsamples,
-							     arguments.nchannels,
-							     samplegranularity,
-							     rotationPhaseInfo,
-							     sampleShift,
-							     fractionalSampleDelays);
+    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads>>>(gpuDelays, lo, sampletime,
+								      fftsamples,
+								      arguments.nchannels,
+								      samplegranularity,
+								      rotationPhaseInfo,
+								      sampleShift,
+								      fractionalSampleDelays);
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
       printf("  done in %8.3f ms.\n", timerResult);
@@ -537,7 +566,7 @@ int main(int argc, char *argv[]) {
     }
     timerStart(&timers, "old_unpack2bit_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
-      old_unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
+      old_unpack2bit_2chan<<<unpackBlocks, unpackThreads>>>(unpackedData, packedData[j], j);
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -549,7 +578,7 @@ int main(int argc, char *argv[]) {
     }
     timerStart(&timers, "unpack2bit_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -562,7 +591,7 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "unpack2bit_2chan_fast");
     for (j = 0; j < arguments.nantennas; j++) {
       init_2bitLevels();
-      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], &(sampleShift[numffts*j]), fftsamples);
+      unpack2bit_2chan_fast<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], &(sampleShift[numffts*j]), fftsamples);
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -575,7 +604,7 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "unpack8bitcomplex_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
       init_2bitLevels();
-      unpack8bitcomplex_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &(sampleShift[numffts*j]), fftsamples);
+      unpack8bitcomplex_2chan<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &(sampleShift[numffts*j]), fftsamples);
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -597,7 +626,14 @@ int main(int argc, char *argv[]) {
   timerPrintStatistics(&timers, "unpack2bit_2chan_fast", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack8bitcomplex_2chan", implied_time, jsonvis);
 
-
+  // Free some memory.
+  for (i = 0; i < arguments.nantennas; i++) {
+    cudaFree(packedData[i]);
+    cudaFree(packedData8[i]);
+    cudaFree(unpacked[i]);
+  }
+  cudaFree(unpackedData);
+  
   /*
    * This benchmarks the performance of the fringe rotator kernel.
    */
@@ -678,6 +714,14 @@ int main(int argc, char *argv[]) {
   }
   cufftDestroy(plan);
   timerPrintStatistics(&timers, "cufftExecC2C", implied_time, jsonvis);
+
+  // Free some memory.
+  cudaFree(rotVec);
+  cudaFree(unpackedData2);
+  cudaFree(sampleShift);
+  cudaFree(rotationPhaseInfo);
+  cudaFree(fractionalSampleDelays);
+  cudaFree(gpuDelays);
   
   /*
    * This benchmarks the performance of the cross-correlator and accumulator
