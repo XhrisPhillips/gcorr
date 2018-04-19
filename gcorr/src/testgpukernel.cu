@@ -163,6 +163,7 @@ int main(int argc, char *argv[])
   char *configfile;
   int subintbytes, status, cfactor;
   int nPol;
+  int samplegranularity; /**< how many time samples per byte.  If >1, then our fractional sample error can be >0.5 samples */
   uint8_t ** inputdata;
   double ** delays; /**< delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration */
   double * antfileoffsets; /**< offset from each the nominal start time of the integration for each antenna data file.  
@@ -204,6 +205,11 @@ int main(int argc, char *argv[])
   // load up the test input data and delays from the configfile
   parseConfig(configfile, nbit, nPol, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays, &antfileoffsets);
 
+  samplegranularity = 8 / (nbit * nPol);
+  if (samplegranularity < 1)
+  {
+    samplegranularity = 1;
+  }
   nbaseline = numantennas*(numantennas-1)/2;
   if (iscomplex) {
     cfactor = 1;
@@ -301,8 +307,13 @@ int main(int argc, char *argv[])
                &gpuDelays, numantennas, subintsamples,
 	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum);
 
-  for (int i=0; i<numantennas; i++) {
+  for (int i=0; i<numantennas; i++)
+  {
     antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
+    if (!antStream.back()->good())
+    {
+      cerr << "Problem with file " << antFiles[i] << " - does it exist?" << endl;
+    }
   }
 
   // Configure CUFFT
@@ -341,7 +352,8 @@ int main(int argc, char *argv[])
   for (int l=0; l<arguments.nloops; l++)
   {
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
-    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftchannels, numchannels, rotationPhaseInfo, 
+    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime, fftchannels, numchannels, 
+                                                             samplegranularity, rotationPhaseInfo, 
                                                              sampleShifts, fractionalSampleDelays);
     CudaCheckError();
 
