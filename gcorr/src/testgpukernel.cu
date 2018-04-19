@@ -226,14 +226,19 @@ int main(int argc, char *argv[])
   int unpackBlocks;
   if (nbit==2 && !iscomplex) {
     unpackBlocks = subintsamples/2/unpackThreads; // 2 time samples/byte
+    if (unpackThreads*unpackBlocks*nPol!=subintsamples) {
+      cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
+      exit(1);
+    }
   } else if (nbit==8 && iscomplex) {
-    unpackBlocks = subintsamples*nPol; // Each pol separately
+    unpackBlocks = subintsamples*nPol/unpackThreads; // Each pol separately
+    if (unpackThreads*unpackBlocks!=subintsamples*nPol) {
+      cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
+      exit(1);
+    }
   } else {
     cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
     exit(1);
-  }
-  if (unpackThreads*unpackBlocks*nPol!=subintsamples) {
-    cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
   }
 
   // Fringe Rotate
