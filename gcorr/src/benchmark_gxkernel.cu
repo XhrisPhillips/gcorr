@@ -159,20 +159,20 @@ void time_stats_single(float *timearray, int ntime, float **output) {
   int i = 0;
   *output = (float *)malloc(3 * sizeof(float));
 
-  *output[0] = 0.0;
+  (*output)[0] = 0.0;
   for (i = 1; i < ntime; i++) {
-    *output[0] += timearray[i];
+    (*output)[0] += timearray[i];
     if (i == 1) {
-      *output[1] = timearray[i];
-      *output[2] = timearray[i];
+      (*output)[1] = timearray[i];
+      (*output)[2] = timearray[i];
     } else {
-      *output[1] = (timearray[i] < *output[1]) ? timearray[i] : *output[1];
-      *output[2] = (timearray[i] > *output[2]) ? timearray[i] : *output[2];
+      (*output)[1] = (timearray[i] < (*output)[1]) ? timearray[i] : (*output)[1];
+      (*output)[2] = (timearray[i] > (*output)[2]) ? timearray[i] : (*output)[2];
     }
   }
 
   if ((ntime - 1) > 0) {
-    *output[0] /= (float)(ntime - 1);
+    (*output)[0] /= (float)(ntime - 1);
   }
 
   return;
