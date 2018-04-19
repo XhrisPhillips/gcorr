@@ -574,18 +574,22 @@ int main(int argc, char *argv[]) {
    */
   cudaEvent_t start_test_crosscorr, end_test_crosscorr;
   cudaEvent_t start_test_crosscorr2, end_test_crosscorr2;
+  cudaEvent_t start_test_crosscorr3, end_test_crosscorr3;
   cudaEvent_t start_test_accum, end_test_accum;
   float *dtime_crosscorr=NULL, averagetime_crosscorr = 0.0;
   float mintime_crosscorr = 0.0, maxtime_crosscorr = 0.0;
   float *dtime_crosscorr2=NULL, averagetime_crosscorr2 = 0.0;
   float mintime_crosscorr2 = 0.0, maxtime_crosscorr2 = 0.0;
+  float *dtime_crosscorr3=NULL, averagetime_crosscorr3 = 0.0;
+  float mintime_crosscorr3 = 0.0, maxtime_crosscorr3 = 0.0;
   float *dtime_accum=NULL, averagetime_accum = 0.0;
   float mintime_accum = 0.0, maxtime_accum = 0.0;
   int corrThreads, blockchan, nchunk, ccblock_width = 128;
   cuComplex *baselineData;
-  dim3 corrBlocks, accumBlocks, ccblock;
+  dim3 corrBlocks, accumBlocks, ccblock, ccblock2;
   dtime_crosscorr = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_crosscorr2 = (float *)malloc(arguments.nloops * sizeof(float));
+  dtime_crosscorr3 = (float *)malloc(arguments.nloops * sizeof(float));
   dtime_accum = (float *)malloc(arguments.nloops * sizeof(float));
   
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
@@ -602,6 +606,8 @@ int main(int argc, char *argv[]) {
   accumBlocks = dim3(blockchan, 4, nbaseline);
   ccblock = dim3((1 + (arguments.nchannels - 1) / ccblock_width),
 		 arguments.nantennas - 1, arguments.nantennas - 1);
+  ccblock2 = dim3((1 + (arguments.nchannels - 1) / ccblock_width),
+		  (2 * arguments.nantennas -1), (2 * arguments.nantennas - 1));
   nchunk = numffts / parallelAccum;
 
   printf("\n\nEach cross correlation test will run:\n");
@@ -613,12 +619,15 @@ int main(int argc, char *argv[]) {
   printf("  nchunk = %d\n", nchunk);
   printf("  ccblock_width = %d\n", ccblock_width);
   printf("  ccblock = x: %d , y: %d, z: %d\n", ccblock.x, ccblock.y, ccblock.z);
+  printf("  ccblock2 = x: %d , y: %d, z: %d\n", ccblock2.x, ccblock2.y, ccblock2.z);
 
   
   cudaEventCreate(&start_test_crosscorr);
   cudaEventCreate(&end_test_crosscorr);
   cudaEventCreate(&start_test_crosscorr2);
   cudaEventCreate(&end_test_crosscorr2);
+  cudaEventCreate(&start_test_crosscorr3);
+  cudaEventCreate(&end_test_crosscorr3);
   cudaEventCreate(&start_test_accum);
   cudaEventCreate(&end_test_accum);
   for (i = 0; i < arguments.nloops; i++) {
@@ -652,6 +661,17 @@ int main(int argc, char *argv[]) {
     cudaEventElapsedTime(&(dtime_crosscorr2[i]), start_test_crosscorr2,
 			 end_test_crosscorr2);
     postLaunchCheck();
+
+    preLaunchCheck();
+    cudaEventRecord(start_test_crosscorr3, 0);
+    CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
+				      arguments.nantennas, numffts,
+				      arguments.nchannels, fftchannels);
+    cudaEventRecord(end_test_crosscorr3, 0);
+    cudaEventSynchronize(end_test_crosscorr3);
+    cudaEventElapsedTime(&(dtime_crosscorr3[i]), start_test_crosscorr3,
+			 end_test_crosscorr3);
+    postLaunchCheck();
     
   }
   // Do some statistics.
@@ -679,12 +699,22 @@ int main(int argc, char *argv[]) {
 	 (arguments.nloops - 1),
 	 averagetime_crosscorr2, mintime_crosscorr2, maxtime_crosscorr2, implied_time,
 	 ((implied_time * 1e3) / averagetime_crosscorr2));
+  (void)time_stats(dtime_crosscorr3, arguments.nloops, &averagetime_crosscorr3,
+		   &mintime_crosscorr3, &maxtime_crosscorr3);
+  printf("\n==== ROUTINES: CCAH2 ====\n");
+  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	 (arguments.nloops - 1),
+	 averagetime_crosscorr3, mintime_crosscorr3, maxtime_crosscorr3, implied_time,
+	 ((implied_time * 1e3) / averagetime_crosscorr3));
 
   
   cudaEventDestroy(start_test_crosscorr);
   cudaEventDestroy(end_test_crosscorr);
   cudaEventDestroy(start_test_crosscorr2);
   cudaEventDestroy(end_test_crosscorr2);
+  cudaEventDestroy(start_test_crosscorr3);
+  cudaEventDestroy(end_test_crosscorr3);
   cudaEventDestroy(start_test_accum);
   cudaEventDestroy(end_test_accum);
   
