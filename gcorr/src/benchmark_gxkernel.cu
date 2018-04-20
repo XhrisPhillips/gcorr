@@ -536,6 +536,7 @@ int main(int argc, char *argv[]) {
   timerAdd(&timers, "unpack2bit_2chan");
   timerAdd(&timers, "unpack2bit_2chan_fast");
   timerAdd(&timers, "unpack8bitcomplex_2chan");
+  timerAdd(&timers, "unpack8bitcomplex_2chan_rotate");
   for (i = 0; i < arguments.nloops; i++) {
     if (arguments.verbose) {
       printf("\nLOOP %d\n", i);
@@ -610,6 +611,19 @@ int main(int argc, char *argv[]) {
     if (arguments.verbose) {
       printf("  done in %8.3f ms.\n", timerResult);
     }
+
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL 5... ");
+    }
+    timerStart(&timers, "unpack8bitcomplex_2chan_rotate");
+    for (j = 0; j < arguments.nantennas; j++) {
+      init_2bitLevels();
+      unpack8bitcomplex_2chan_rotate<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &rotationPhaseInfo[j*numffts*2], &(sampleShift[numffts*j]), fftsamples);
+    }
+    timerResult = timerEnd(&timers);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", timerResult);
+    }
   }
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
@@ -625,6 +639,7 @@ int main(int argc, char *argv[]) {
   timerPrintStatistics(&timers, "unpack2bit_2chan", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack2bit_2chan_fast", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack8bitcomplex_2chan", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack8bitcomplex_2chan_rotate", implied_time, jsonvis);
 
   // Free some memory.
   for (i = 0; i < arguments.nantennas; i++) {
@@ -688,7 +703,7 @@ int main(int argc, char *argv[]) {
     exit(0);
   }
 
-  printf("\n\nEach fringe rotation test will run:\n");
+  printf("\n\nEach FFT test will run:\n");
   printf("  parallelAccum = %d\n", parallelAccum);
   printf("  nbaselines = %d\n", nbaseline);
   
