@@ -531,6 +531,8 @@ int main(int argc, char *argv[]) {
   }
   curandDestroyGenerator(gen);
 
+  init_2bitLevels();
+
   timerAdd(&timers, "calculateDelaysAndPhases");
   timerAdd(&timers, "old_unpack2bit_2chan");
   timerAdd(&timers, "unpack2bit_2chan");
@@ -592,7 +594,7 @@ int main(int argc, char *argv[]) {
     }
     timerStart(&timers, "unpack2bit_2chan_fast");
     for (j = 0; j < arguments.nantennas; j++) {
-      init_2bitLevels();
+      //init_2bitLevels();
       unpack2bit_2chan_fast<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], &(sampleShift[numffts*j]), fftsamples);
     }
     timerResult = timerEnd(&timers);
@@ -617,7 +619,7 @@ int main(int argc, char *argv[]) {
     }
     timerStart(&timers, "unpack8bitcomplex_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
-      init_2bitLevels();
+      //init_2bitLevels();
       unpack8bitcomplex_2chan<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &(sampleShift[numffts*j]), fftsamples);
     }
     timerResult = timerEnd(&timers);
@@ -630,7 +632,7 @@ int main(int argc, char *argv[]) {
     }
     timerStart(&timers, "unpack8bitcomplex_2chan_rotate");
     for (j = 0; j < arguments.nantennas; j++) {
-      init_2bitLevels();
+      //init_2bitLevels();
       unpack8bitcomplex_2chan_rotate<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &rotationPhaseInfo[j*numffts*2], &(sampleShift[numffts*j]), fftsamples);
     }
     timerResult = timerEnd(&timers);
