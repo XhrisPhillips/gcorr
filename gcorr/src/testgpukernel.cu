@@ -12,6 +12,8 @@
 
 #include <cuComplex.h>
 #include <cufft.h>
+#include <cufftXt.h>
+#include <cuda_fp16.h>
 
 #include "common.h"
 
@@ -76,8 +78,8 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 #include "gxkernel.h"
 
-void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
-		  cuComplex **channelisedData, cuComplex **baselineData, 
+void allocDataGPU(int8_t ***packedData, half2 **unpackedData,
+		  half2 **channelisedData, cuComplex **baselineData, 
 		  float **rotationPhaseInfo, float **fractionalSampleDelays, int **sampleShifts, 
                   double **gpuDelays, int numantenna, int subintsamples, int nbit, 
                   int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum)
@@ -93,12 +95,12 @@ void allocDataGPU(int8_t ***packedData, cuComplex **unpackedData,
   }
 
   // Unpacked data
-  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*subintsamples*sizeof(cuComplex)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
+  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*subintsamples*sizeof(half2)));
+  GPUalloc += numantenna*nPol*subintsamples*sizeof(half2);
   
   // FFT output
-  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*subintsamples*sizeof(cuComplex)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
+  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*subintsamples*sizeof(half2)));
+  GPUalloc += numantenna*nPol*subintsamples*sizeof(half2);
 
   // Baseline visibilities
   int nbaseline = numantenna*(numantenna-1)/2;
@@ -180,7 +182,8 @@ int main(int argc, char *argv[])
   float *fractionalSampleDelays;
   int *sampleShifts;
   double *gpuDelays;
-  cuComplex *unpackedData, *channelisedData, *baselineData;
+  half2 *unpackedData, *channelisedData;
+  cuComplex *baselineData;
   cufftHandle plan;
   cudaEvent_t start_exec, stop_exec;
   
@@ -375,7 +378,13 @@ int main(int argc, char *argv[])
   }
 
   // Configure CUFFT
-  if (cufftPlan1d(&plan, fftsamples, CUFFT_C2C, nPol*numantennas*numffts) != CUFFT_SUCCESS) {
+  if (cufftCreate(&plan) != CUFFT_SUCCESS) {
+    cout << "CUFFT error: Handle creation failed" << endl;
+    return(0);
+  }
+  long long int n[1] = { fftsamples };
+  size_t workSize[1] = { 0 };
+  if (cufftXtMakePlanMany(plan, 1, n, NULL, 0, 0, CUDA_C_16F, NULL, 0, 0, CUDA_C_16F, nPol*numantennas*numffts, workSize, CUDA_C_16F) != CUFFT_SUCCESS) {
     cout << "CUFFT error: Plan creation failed" << endl;
     return(0);
   }
@@ -444,7 +453,7 @@ int main(int argc, char *argv[])
   
     // FFT
     //cout << "FFT data" << endl;
-    if (cufftExecC2C(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+    if (cufftXtExec(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
       cout << "CUFFT error: ExecC2C Forward failed" << endl;
       return(0);
     }

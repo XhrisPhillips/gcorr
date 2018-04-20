@@ -26,16 +26,16 @@ __host__ __device__ static __inline__ void cuCdivCf(cuFloatComplex *a, float b)
 }
 
 // Rotate inplace a complex number by theta (radians)
-__host__ __device__ static __inline__ void cuRotatePhase (cuComplex *x, float theta)
+__device__ static __inline__ void cuRotatePhase (half2 &h, float theta)
 {
   float cs, sn;
   sincosf(theta, &sn, &cs);
     
-  float px = x->x * cs - x->y * sn; 
-  float py = x->x * sn + x->y * cs;
+  float2 x = __half22float2(h);
+  float px = x.x * cs - x.y * sn; 
+  float py = x.x * sn + x.y * cs;
 
-  x->x = px;
-  x->y = py;
+  h = __floats2half2_rn(px, py);
   return;
 }
 
@@ -50,18 +50,16 @@ __host__ __device__ static __inline__ void cuRotatePhase2 (cuComplex &x, float &
 }
 
 // Rotate a complex number by theta (radians)
-__host__ __device__ static __inline__ void cuRotatePhase3 (float x, cuComplex &y, float sinA, float cosA)
+__device__ static __inline__ void cuRotatePhase3 (float x, half2 &y, float sinA, float cosA)
 {
-  y.x = x * cosA;
-  y.y = x * sinA;
+  y = __floats2half2_rn(x * cosA, x * sinA);
   return;
 }
 
 // Rotate a complex number by theta (radians)
-__host__ __device__ static __inline__ void cuRotatePhase4 (cuComplex x, cuComplex &y, float sinA, float cosA)
+__device__ static __inline__ void cuRotatePhase4 (cuComplex x, half2 &y, float sinA, float cosA)
 {
-  y.x = x.x * cosA - x.y * sinA;
-  y.y = x.x * sinA + x.y * cosA;
+  y = __floats2half2_rn(x.x * cosA - x.y * sinA, x.x * sinA + x.y * cosA);
   return;
 }
 
@@ -136,7 +134,7 @@ __global__ void setFringeRotation(float *rotVec) {
    grid.z is number of Antennas
  */
 
-__global__ void FringeRotate(cuComplex *ant, float *rotVec) {
+__global__ void FringeRotate(half2 *ant, float *rotVec) {
   int fftsize = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
@@ -150,8 +148,8 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec) {
   float theta = -p0 - ichan*p1;
 
   // Should precompute sin/cos
-  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftsize, subintsamples)], theta);
-  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftsize, subintsamples)], theta);
+  cuRotatePhase(ant[sampIdx(iant, 0, ichan+ifft*fftsize, subintsamples)], theta);
+  cuRotatePhase(ant[sampIdx(iant, 1, ichan+ifft*fftsize, subintsamples)], theta);
 }
 
 __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
@@ -185,7 +183,7 @@ __global__ void FringeRotate2(cuComplex *ant, float *rotVec) {
    blockIdx.z is antenna number 
 */
 
-__global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValues,
+__global__ void FracSampleCorrection(half2 *ant, float *fractionalDelayValues,
 				     int numchannels, int fftsamples, int numffts, int subintsamples) {
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x;
   size_t ifft = blockIdx.y;
@@ -194,8 +192,8 @@ __global__ void FracSampleCorrection(cuComplex *ant, float *fractionalDelayValue
   // phase and slope for this FFT
   float dslope = fractionalDelayValues[iant*numffts + ifft];
   float theta = ichan*dslope;
-  cuRotatePhase(&ant[sampIdx(iant, 0, ichan+ifft*fftsamples, subintsamples)], theta);
-  cuRotatePhase(&ant[sampIdx(iant, 1, ichan+ifft*fftsamples, subintsamples)], theta);
+  cuRotatePhase(ant[sampIdx(iant, 0, ichan+ifft*fftsamples, subintsamples)], theta);
+  cuRotatePhase(ant[sampIdx(iant, 1, ichan+ifft*fftsamples, subintsamples)], theta);
 }
 
 //__constant__ float levels_2bit[4];
@@ -248,7 +246,7 @@ __global__ void unpack8bitcomplex_2chan(cuComplex *dest, const int8_t *src, cons
   dest[ifft*fftsamples + osamp] = make_cuFloatComplex(src[ibyte - shifts[ifft]*4], src[ibyte - shifts[ifft]*4 + 1]);
 }
 
-__global__ void unpack8bitcomplex_2chan_rotate(cuComplex *dest, const int8_t *src, float *rotVec, const int32_t *shifts, const int32_t fftsamples) {
+__global__ void unpack8bitcomplex_2chan_rotate(half2 *dest, const int8_t *src, float *rotVec, const int32_t *shifts, const int32_t fftsamples) {
   const size_t isamp = (blockDim.x * blockIdx.x + threadIdx.x); //This can go from 0 ... fftsamples*2 (i.e., number of samples in an FFT * 2 channels)
   const size_t ifft = blockIdx.y;
   int subintsamples = fftsamples * gridDim.y;
@@ -289,7 +287,7 @@ __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const 
   dest[subintsamples + isample + 1] = make_cuFloatComplex(kLevels_2bit[(src_i>>6)&0x3], 0);
 }
 
-__global__ void unpack2bit_2chan_rotate(cuComplex *dest, const int8_t *src, float *rotVec, const int32_t *shifts, const int32_t fftsamples) {
+__global__ void unpack2bit_2chan_rotate(half2 *dest, const int8_t *src, float *rotVec, const int32_t *shifts, const int32_t fftsamples) {
   // static const float HiMag = 3.3359;  // Optimal value
   // const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
   const size_t isample = 2*(blockDim.x * blockIdx.x + threadIdx.x);
@@ -468,7 +466,7 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
     }
 }
 
-__global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+__global__ void CCAH2(cuComplex *accum, const half2 *ants, int nant, int nfft, int nchan, int fftwidth) {
     int t = threadIdx.x+blockIdx.x*blockDim.x;
     if (t>=nchan) return;
 
@@ -492,18 +490,18 @@ __global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nff
 
     int s = nfft*fftwidth;
 
-    const float2* iv = ants+ii*s+t;
-    const float2* jv = ants+ij*s+t;
+    const half2* iv = ants+ii*s+t;
+    const half2* jv = ants+ij*s+t;
 
-    float2 u = iv[0];
-    float2 v = jv[0];
+    float2 u = __half22float2(iv[0]);
+    float2 v = __half22float2(jv[0]);
     float2 a;
     a.x = u.x*v.x + u.y*v.y;
     a.y = u.y*v.x - u.x*v.y;
 
     for (int k = fftwidth; k<s; k += fftwidth) {
-        u = iv[k];
-        v = jv[k];
+        u = __half22float2(iv[k]);
+        v = __half22float2(jv[k]);
 
         a.x += u.x*v.x + u.y*v.y;
         a.y += u.y*v.x - u.x*v.y;
