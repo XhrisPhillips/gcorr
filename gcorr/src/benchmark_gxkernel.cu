@@ -717,6 +717,7 @@ int main(int argc, char *argv[]) {
   }
 
   timerAdd(&timers, "cufftExecC2C");
+  timerAdd(&timers, "cufftExecC2C_inplace");
   for (i = 0; i < arguments.nloops; i++) {
 
     timerStart(&timers, "cufftExecC2C");
@@ -726,9 +727,17 @@ int main(int argc, char *argv[]) {
     }
     timerEnd(&timers);
 
+    timerStart(&timers, "cufftExecC2C_inplace");
+    if (cufftExecC2C(plan, channelisedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+      printf("FFT execution failed!\n");
+      exit(0);
+    }
+    timerEnd(&timers);
+    
   }
   cufftDestroy(plan);
   timerPrintStatistics(&timers, "cufftExecC2C", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "cufftExecC2C_inplace", implied_time, jsonvis);
 
   // Free some memory.
   cudaFree(rotVec);
