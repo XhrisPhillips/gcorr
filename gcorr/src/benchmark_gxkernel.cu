@@ -535,6 +535,7 @@ int main(int argc, char *argv[]) {
   timerAdd(&timers, "old_unpack2bit_2chan");
   timerAdd(&timers, "unpack2bit_2chan");
   timerAdd(&timers, "unpack2bit_2chan_fast");
+  timerAdd(&timers, "unpack2bit_2chan_rotate");
   timerAdd(&timers, "unpack8bitcomplex_2chan");
   timerAdd(&timers, "unpack8bitcomplex_2chan_rotate");
   for (i = 0; i < arguments.nloops; i++) {
@@ -602,6 +603,18 @@ int main(int argc, char *argv[]) {
     if (arguments.verbose) {
       printf("  RUNNING KERNEL 4... ");
     }
+    timerStart(&timers, "unpack2bit_2chan_rotate");
+    for (j = 0; j < arguments.nantennas; j++) {
+      unpack2bit_2chan_rotate<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], &rotationPhaseInfo[j*numffts*2], &(sampleShift[numffts*j]), fftsamples);
+    }
+    timerResult = timerEnd(&timers);
+    if (arguments.verbose) {
+      printf("  done in %8.3f ms.\n", timerResult);
+    }
+
+    if (arguments.verbose) {
+      printf("  RUNNING KERNEL 5... ");
+    }
     timerStart(&timers, "unpack8bitcomplex_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
       init_2bitLevels();
@@ -613,7 +626,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (arguments.verbose) {
-      printf("  RUNNING KERNEL 5... ");
+      printf("  RUNNING KERNEL 6... ");
     }
     timerStart(&timers, "unpack8bitcomplex_2chan_rotate");
     for (j = 0; j < arguments.nantennas; j++) {
@@ -638,6 +651,7 @@ int main(int argc, char *argv[]) {
   timerPrintStatistics(&timers, "old_unpack2bit_2chan", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack2bit_2chan", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack2bit_2chan_fast", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack2bit_2chan_rotate", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack8bitcomplex_2chan", implied_time, jsonvis);
   timerPrintStatistics(&timers, "unpack8bitcomplex_2chan_rotate", implied_time, jsonvis);
 
