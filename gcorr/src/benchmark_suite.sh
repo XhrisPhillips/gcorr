@@ -5,7 +5,7 @@ STD_SAMP=8388608
 STD_CHAN=2048
 STD_NANT=6
 
-for s in 1048576 2097152 4194304 8388608 16777216
+for s in 2097152 4194304 8388608 16777216
 do
     echo samples = $s
     ./benchmark_gxkernel -c ${STD_CHAN} -a ${STD_NANT} -s $s -j nant${STD_NANT}_chan${STD_CHAN}_samp${s}.json
