@@ -209,14 +209,14 @@ int main(int argc, char *argv[])
 
     int deviceCount;
     cudaGetDeviceCount(&deviceCount);
-    if (arguments.gpu_select>deviceCount) {
+    if (arguments.gpu_select>=deviceCount) {
       fprintf(stderr, "Error: Selected GPU (%d) too high for number of GPU (%d)!\n",
 	      arguments.gpu_select, deviceCount);
       exit(1);
-      //cudaDeviceProp deviceProperties;
-      //cudaGetDeviceProperties(&deviceProperties, arguments.gpu_select);  // Check it is available
-      cudaSetDevice(arguments.gpu_select);
     }
+    //cudaDeviceProp deviceProperties;
+    //cudaGetDeviceProperties(&deviceProperties, arguments.gpu_select);  // Check it is available
+    cudaSetDevice(arguments.gpu_select);
   }
 
   cudaEventCreate(&start_exec);
