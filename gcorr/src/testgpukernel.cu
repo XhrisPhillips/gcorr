@@ -207,8 +207,8 @@ int main(int argc, char *argv[])
   if (arguments.gpu_select>0) {
     printf("Using GPU %d\n", arguments.gpu_select);
 
-    int devicesCount;
-    cudaGetDeviceCount(&devicesCount);
+    int deviceCount;
+    cudaGetDeviceCount(&deviceCount);
     if (arguments.gpu_select>deviceCount) {
       fprintf(stderr, "Error: Selected GPU (%d) too high for number of GPU (%d)!\n",
 	      arguments.gpu_select, deviceCount);
