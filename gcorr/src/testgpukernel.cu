@@ -210,16 +210,16 @@ int main(int argc, char *argv[])
   if (arguments.gpu_select>0) {
     printf("Using GPU %d\n", arguments.gpu_select);
 
-    int devicesCount;
-    cudaGetDeviceCount(&devicesCount);
-    if (arguments.gpu_select>deviceCount) {
+    int deviceCount;
+    cudaGetDeviceCount(&deviceCount);
+    if (arguments.gpu_select>=deviceCount) {
       fprintf(stderr, "Error: Selected GPU (%d) too high for number of GPU (%d)!\n",
 	      arguments.gpu_select, deviceCount);
       exit(1);
-      //cudaDeviceProp deviceProperties;
-      //cudaGetDeviceProperties(&deviceProperties, arguments.gpu_select);  // Check it is available
-      cudaSetDevice(arguments.gpu_select);
     }
+    //cudaDeviceProp deviceProperties;
+    //cudaGetDeviceProperties(&deviceProperties, arguments.gpu_select);  // Check it is available
+    cudaSetDevice(arguments.gpu_select);
   }
 
   cudaEventCreate(&start_exec);
@@ -484,7 +484,8 @@ int main(int argc, char *argv[])
     CudaCheckError();
     
     // Cross correlate
-    gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
+    //gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
+    gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*sizeof(cuComplex)));
 
 #if 0
     cout << "Cross correlate" << endl;

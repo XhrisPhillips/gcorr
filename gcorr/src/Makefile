@@ -7,8 +7,8 @@ CC      = gcc -O3 -Wall -g
 NVCC	= nvcc -O3
 NVDEBUG = nvcc -lineinfo -g -G
 
-
-EXECS = testgpukernel benchmark_gxkernel
+#EXECS = testgpukernel benchmark_gxkernel
+EXECS = testgpukernel
 
 SOURCES	= gxkernel.cu testgpukernel.cu benchmark_gxkernel.cu
 
