@@ -35,12 +35,14 @@ static char args_doc[] = "configuration_file";
 static struct argp_option options[] = {
   { "loops", 'n', "NLOOPS", 0, "run the code N times in a loop" },
   { "binary", 'b', 0, 0, "output binary instead of default text" },
+  { "gpu", 'g', "GPU", 0, "Select specific GPU"},
   { 0 }
 };
 
 struct arguments {
   int output_binary;
   int nloops;
+  int gpu_select;
   char configfile[BUFSIZE];
 };
 
@@ -54,6 +56,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     break;
   case 'n':
     arguments->nloops = atoi(arg);
+    break;
+  case 'g':
+    arguments->gpu_select = atoi(arg);
     break;
   case ARGP_KEY_END:
     if (strlen(arguments->configfile) == 0) {
@@ -191,6 +196,7 @@ int main(int argc, char *argv[])
   struct arguments arguments;
   arguments.nloops = 1;
   arguments.output_binary = 0;
+  arguments.gpu_select = -1;
   arguments.configfile[0] = 0;
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
@@ -200,6 +206,21 @@ int main(int argc, char *argv[])
   printf("reading configuration file %s\n", arguments.configfile);
   printf("running %d loops\n", arguments.nloops);
   printf("will output %s data\n", (arguments.output_binary == 0) ? "text" : "binary");
+
+  if (arguments.gpu_select>0) {
+    printf("Using GPU %d\n", arguments.gpu_select);
+
+    int devicesCount;
+    cudaGetDeviceCount(&devicesCount);
+    if (arguments.gpu_select>deviceCount) {
+      fprintf(stderr, "Error: Selected GPU (%d) too high for number of GPU (%d)!\n",
+	      arguments.gpu_select, deviceCount);
+      exit(1);
+      //cudaDeviceProp deviceProperties;
+      //cudaGetDeviceProperties(&deviceProperties, arguments.gpu_select);  // Check it is available
+      cudaSetDevice(arguments.gpu_select);
+    }
+  }
 
   cudaEventCreate(&start_exec);
   cudaEventCreate(&stop_exec);
