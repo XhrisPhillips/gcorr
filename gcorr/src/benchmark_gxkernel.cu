@@ -53,8 +53,8 @@ struct timerCollection {
 
 void timerInitialise(struct timerCollection *tc) {
   // Set up the structure correctly
-  cudaEventCreate(&(tc->startTime));
-  cudaEventCreate(&(tc->endTime));
+  gpuErrchk(cudaEventCreate(&(tc->startTime)));
+  gpuErrchk(cudaEventCreate(&(tc->endTime)));
   tc->nTimers = 0;
   tc->timerNames = NULL;
   tc->numIterations = NULL;
@@ -83,6 +83,7 @@ int timerStart(struct timerCollection *tc, const char *timerName) {
   // Start the timer.
   // Return immediately if a timer has already been started.
   if (tc->currentTimer != -1) {
+    printf("timerStart: another timer is already running!\n");
     return -1;
   }
   
@@ -96,43 +97,51 @@ int timerStart(struct timerCollection *tc, const char *timerName) {
 
   if (tc->currentTimer >= 0) {
     tc->timerCalculated[tc->currentTimer] = 0;
-    preLaunchCheck();
-    cudaEventRecord(tc->startTime, 0);
+    gpuErrchk(cudaEventRecord(tc->startTime, 0));
     return 0;
   }
 
+  printf("timerStart: could not find timer entry for %s!\n", timerName);
   return -2;
 }
 
 float timerEnd(struct timerCollection *tc) {
+
+  // Catch any kernel-launch errors
+  gpuErrchk(cudaPeekAtLastError());
+
   // Stop the running timer.
   // Return immediately if no timer has been started.
   if (tc->currentTimer == -1) {
-    return 0.0;
+    return -1.0f;
   }
 
   // Keep a copy of the current timer.
   int ct = tc->currentTimer;
   
   // Stop the timer.
-  cudaEventRecord(tc->endTime, 0);
-  cudaEventSynchronize(tc->endTime);
-  postLaunchCheck();
+  float elapsed_ms = -1.0f;
+  gpuErrchk(cudaEventRecord(tc->endTime, 0));
+  gpuErrchk(cudaEventSynchronize(tc->endTime));
+  gpuErrchk(cudaEventElapsedTime(&elapsed_ms, tc->startTime, tc->endTime));
 
   // Add an iteration to the right place.
   tc->numIterations[ct] += 1;
   int nint = tc->numIterations[ct];
   tc->timerResults[ct] = (float *)realloc(tc->timerResults[ct],
 					  nint * sizeof(float));
-  cudaEventElapsedTime(&(tc->timerResults[ct][nint - 1]),
-		       tc->startTime, tc->endTime);
-  
+  if (tc->timerResults[ct] == NULL) {
+    printf("timerEnd realloc failed\n");
+    exit(0);
+  }  
+  tc->timerResults[ct][nint - 1] = elapsed_ms;
 
   // Reset the current timer.
   tc->currentTimer = -1;
   
   // Return the elapsed time.
-  return tc->timerResults[ct][nint];
+  //return tc->timerResults[ct][nint];
+  return elapsed_ms;
 }
 
 void time_stats_single(float *timearray, int ntime, float **output) {
@@ -530,6 +539,7 @@ int main(int argc, char *argv[]) {
     curandGenerateUniform(gen, (float*)packedData8[i], packedBytes8 * (sizeof(int8_t) / sizeof(float)));
   }
   curandDestroyGenerator(gen);
+  cudaGetLastError();
 
   timerAdd(&timers, "calculateDelaysAndPhases");
   timerAdd(&timers, "old_unpack2bit_2chan");
@@ -555,6 +565,7 @@ int main(int argc, char *argv[]) {
 								      rotationPhaseInfo,
 								      sampleShift,
 								      fractionalSampleDelays);
+    gpuErrchk(cudaPeekAtLastError());
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
       printf("  done in %8.3f ms.\n", timerResult);
@@ -567,6 +578,7 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "old_unpack2bit_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
       old_unpack2bit_2chan<<<unpackBlocks, unpackThreads>>>(unpackedData, packedData[j], j);
+      gpuErrchk(cudaPeekAtLastError());
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -579,6 +591,7 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "unpack2bit_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
       unpack2bit_2chan<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+      gpuErrchk(cudaPeekAtLastError());
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -588,10 +601,11 @@ int main(int argc, char *argv[]) {
     if (arguments.verbose) {
       printf("  RUNNING KERNEL 3... ");
     }
+    init_2bitLevels();
     timerStart(&timers, "unpack2bit_2chan_fast");
     for (j = 0; j < arguments.nantennas; j++) {
-      init_2bitLevels();
       unpack2bit_2chan_fast<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], &(sampleShift[numffts*j]), fftsamples);
+      gpuErrchk(cudaPeekAtLastError());
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -601,10 +615,11 @@ int main(int argc, char *argv[]) {
     if (arguments.verbose) {
       printf("  RUNNING KERNEL 4... ");
     }
+    init_2bitLevels();
     timerStart(&timers, "unpack8bitcomplex_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
-      init_2bitLevels();
       unpack8bitcomplex_2chan<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &(sampleShift[numffts*j]), fftsamples);
+      gpuErrchk(cudaPeekAtLastError());
     }
     timerResult = timerEnd(&timers);
     if (arguments.verbose) {
@@ -628,11 +643,11 @@ int main(int argc, char *argv[]) {
 
   // Free some memory.
   for (i = 0; i < arguments.nantennas; i++) {
-    cudaFree(packedData[i]);
-    cudaFree(packedData8[i]);
-    cudaFree(unpacked[i]);
+    gpuErrchk(cudaFree(packedData[i]));
+    gpuErrchk(cudaFree(packedData8[i]));
+    gpuErrchk(cudaFree(unpacked[i]));
   }
-  cudaFree(unpackedData);
+  gpuErrchk(cudaFree(unpackedData));
   
   /*
    * This benchmarks the performance of the fringe rotator kernel.
@@ -652,11 +667,13 @@ int main(int argc, char *argv[]) {
   
   /* Allocate memory for the rotation vector. */
   gpuErrchk(cudaMalloc(&rotVec, arguments.nantennas * numffts * 2 * sizeof(float)));
+
   /* Fill it with random data. */
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
   curandGenerateUniform(gen, rotVec, arguments.nantennas * numffts * 2);
   curandDestroyGenerator(gen);
+  cudaGetLastError();
 
   timerAdd(&timers, "FringeRotate2");
   timerAdd(&timers, "FringeRotate");
@@ -664,10 +681,12 @@ int main(int argc, char *argv[]) {
     
     timerStart(&timers, "FringeRotate2");
     FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
     
     timerStart(&timers, "FringeRotate");
     FringeRotate<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
     
   }
@@ -695,8 +714,8 @@ int main(int argc, char *argv[]) {
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
 		       arguments.nsamples * sizeof(cuComplex)));
-  if (rc = cufftPlan1d(&plan, fftsamples, CUFFT_C2C,
-		       2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
+  rc = cufftPlan1d(&plan, fftsamples, CUFFT_C2C, 2 * arguments.nantennas * numffts);
+  if (rc != CUFFT_SUCCESS) {
     printf("FFT planning failed! %d\n", rc);
     exit(0);
   }
@@ -716,12 +735,12 @@ int main(int argc, char *argv[]) {
   timerPrintStatistics(&timers, "cufftExecC2C", implied_time, jsonvis);
 
   // Free some memory.
-  cudaFree(rotVec);
-  cudaFree(unpackedData2);
-  cudaFree(sampleShift);
-  cudaFree(rotationPhaseInfo);
-  cudaFree(fractionalSampleDelays);
-  cudaFree(gpuDelays);
+  gpuErrchk(cudaFree(rotVec));
+  gpuErrchk(cudaFree(unpackedData2));
+  gpuErrchk(cudaFree(sampleShift));
+  gpuErrchk(cudaFree(rotationPhaseInfo));
+  gpuErrchk(cudaFree(fractionalSampleDelays));
+  gpuErrchk(cudaFree(gpuDelays));
   
   /*
    * This benchmarks the performance of the cross-correlator and accumulator
@@ -769,22 +788,26 @@ int main(int argc, char *argv[]) {
     timerStart(&timers, "CrossCorr");
     CrossCorr<<<corrBlocks, corrThreads>>>(channelisedData, baselineData,
 					   arguments.nantennas, nchunk);
+    gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
     
     timerStart(&timers, "finaliseAccum");
     finaliseAccum<<<accumBlocks, corrThreads>>>(baselineData, parallelAccum, nchunk);
+    gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
     
     timerStart(&timers, "CrossCorrAccumHoriz");
     CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
 						    arguments.nantennas, numffts,
 						    arguments.nchannels, fftsamples);
+    gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
     
     timerStart(&timers, "CCAH2");
     CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
 				      arguments.nantennas, numffts,
 				      arguments.nchannels, fftsamples);
+    gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
   }
   timerPrintStatistics(&timers, "CrossCorr", implied_time, jsonvis);
