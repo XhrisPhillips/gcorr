@@ -273,9 +273,10 @@ __global__ void unpack2bit_2chan_fast(cuComplex *dest, const int8_t *src, const 
   // const float levels_2bit[4] = {-HiMag, -1.0, 1.0, HiMag};
   const size_t ifft = blockIdx.y;
   const size_t isample = 2*(blockDim.x * blockIdx.x + threadIdx.x) + ifft*fftsamples;
-  int subintsamples = fftsamples * gridDim.y;
-  int8_t src_i = src[(isample - shifts[ifft])/2]; // Here I am just loading src into local memory to 
-                                          // reduce the number of reads from global memory
+  const size_t subintsamples = fftsamples * gridDim.y;
+
+  size_t idx = (isample - shifts[ifft])/2; // FIXME: may lead to memory access outside src[] bounds, see with 'cuda-memcheck ./benchmark_gxkernel'
+  int8_t src_i = src[idx]; // Here I am just loading src into local memory to  reduce the number of reads from global memory
 
   // I have just changed the order of the writes made to dest
   // In theory this should reduce the number of write operations made
