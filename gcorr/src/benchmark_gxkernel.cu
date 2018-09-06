@@ -483,7 +483,8 @@ int main(int argc, char *argv[]) {
   dim3 delayPhaseBlocks = dim3(executionsperthread, arguments.nantennas);
   
   // Allocate the memory.
-  int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
+  int max_delay_samples = 32768;
+  int packedBytes = (arguments.nsamples + max_delay_samples) * 2 * npolarisations / 8;
   int packedBytes8 = packedBytes * 4;
   packedData = new int8_t*[arguments.nantennas];
   packedData8 = new int8_t*[arguments.nantennas];
