@@ -204,8 +204,7 @@ __constant__ float kLevels_2bit[4];
 void init_2bitLevels() {
   static const float HiMag = 3.3359;  // Optimal value
   const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
-
-  gpuErrchk(cudaMemcpyToSymbol(kLevels_2bit, lut4level, sizeof(kLevels_2bit)));
+  gpuErrchk(cudaMemcpyToSymbol("kLevels_2bit", lut4level, 0, cudaMemcpyHostToDevice));
 }
 
 
