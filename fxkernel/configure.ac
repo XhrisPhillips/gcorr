@@ -20,6 +20,11 @@ PKG_CHECK_MODULES(IPP, ipp)
 AC_SUBST(IPP_CFLAGS)
 AC_SUBST(IPP_LIBS)
 
+# Use C++11
+AX_CHECK_COMPILE_FLAG([-std=c++0x], [
+                        CXXFLAGS="$CXXFLAGS -std=c++0x"])
+#AX_CXX_COMPILE_STDCXX_11([noext], [mandatory])
+
 # These are the files to be generated.
 AC_CONFIG_FILES([Makefile src/Makefile])
 
