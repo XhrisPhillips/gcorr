@@ -29,6 +29,9 @@ AC_CONFIG_SRCDIR([src/testfxkernel.cpp])
 # Put configuration results in this file for us to #include in our program.
 AC_CONFIG_HEADERS([config.h])
 
+# Check for a C compiler.
+AC_PROG_CC
+
 # Check for a C++ compiler.
 AC_PROG_CXX
 
