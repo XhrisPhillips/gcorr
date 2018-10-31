@@ -42,8 +42,6 @@ FxKernel::FxKernel(int nant, int nchan, int nfft, int nbit, double lo, double bw
     cfact = 1;
   }
   
-  std::cout << "Subint time is " << sampletime*fftchannels*numffts*1000.0 << " msec" << std::endl;
-
   // Check for consistency and initialise lookup tables, if required.
   if (nbits==2) {
     if (fftchannels % 2) {
@@ -321,8 +319,6 @@ void FxKernel::process()
     
       // Fractional sample correct
       fracSampleCorrect(channelised[j], fractionaldelay);
-
-      //std::cout << j << ", " << i << ", " << meandelay << ", " << delaya << ", " << delayb << ", " << netdelaysamples_f << ", " << fractionaldelay << std::endl;
 
       // Calculate complex conjugate once, for efficency
       conjChannels(channelised[j], conjchannels[j]);

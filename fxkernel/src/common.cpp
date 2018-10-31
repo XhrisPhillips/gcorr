@@ -20,9 +20,7 @@ void allocDataHost(uint8_t ***data, int numantenna, int numchannels, int numffts
 
   *data = new uint8_t*[numantenna];
   for (i=0; i<numantenna; i++)
-  {
     (*data)[i] = new uint8_t[subintbytes];
-  }
 }
 
 int readdata(int bytestoread, vector<std::ifstream*> &antStream, uint8_t **inputdata) 

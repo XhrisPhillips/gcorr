@@ -48,6 +48,15 @@
 #define vectorSinCos_f32(src, sin, cos, length)                             ippsSinCos_32f_A11(src, sin, cos, length)
 #define vectorZero_cf32(dest, length)                                       ippsZero_32fc(dest, length)
 
+/* Copy Routines */
+
+#define vectorCopy_u8(src, dest, length)                                    ippsCopy_8u(src, dest, length)
+#define vectorCopy_s16(src, dest, length)                                   ippsCopy_16s(src, dest, length)
+#define vectorCopy_s32(src, dest, length)                                   ippsCopy_32f((f32*)src, (f32*)dest, length)
+#define vectorCopy_f32(src, dest, length)                                   ippsCopy_32f(src, dest, length)
+#define vectorCopy_cf32(src, dest, length)                                  ippsCopy_32fc(src, dest, length)
+#define vectorCopy_f64(src, dest, length)                                   ippsCopy_64f(src, dest, length)
+
 /* FFT routines */
 #define vecFFT_NoReNorm          IPP_FFT_NODIV_BY_ANY
 #define vecFFT_ReNorm            IPP_FFT_DIV_INV_BY_N
