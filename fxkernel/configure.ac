@@ -42,5 +42,8 @@ AC_PROG_CXX
 CXXFLAGS="${CXXFLAGS} ${IPP_CFLAGS}"
 LIBS="${IPP_LIBS} $LIBS"
 
+# pthreads
+ACX_PTHREAD
+
 # Last line: actually generate all required output files.
 AC_OUTPUT

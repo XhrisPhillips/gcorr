@@ -9,3 +9,6 @@ bin_PROGRAMS = testfxkernel bench_fxkernel
 
 testfxkernel_SOURCES = testfxkernel.cpp fxkernel.cpp common.cpp
 bench_fxkernel_SOURCES = bench_fxkernel.cpp fxkernel.cpp common.cpp
+
+bench_fxkernel_CXXFLAGS = $(PTHREAD_CFLAGS)
+bench_fxkernel_LDADD = $(PTHREAD_LIBS)
