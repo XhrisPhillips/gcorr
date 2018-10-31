@@ -271,11 +271,9 @@ int main(int argc, char *argv[])
 
   std::cout << "Run time was " << t1.count() << " milliseconds" << endl;
 
-  uint64_t totalBits = subintbytes * nloop * nthread * 8;
+  uint64_t totalBits = (uint64_t)subintbytes * nloop * nthread * 8;
 
   std::cout << "    " << totalBits/f_secs.count()/1e6 << " Mbps" << endl;
-  
-  
 
   // Free memory
   for (i=0; i<numantennas; i++)
