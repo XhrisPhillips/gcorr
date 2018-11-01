@@ -204,9 +204,6 @@ int main(int argc, char *argv[])
   cout << "Got BANDWIDTH " << bandwidth << endl;
   cout << "Got NUMFFTS " << numffts << endl;
   cout << "Got NANT " << numantennas << endl;
-  for (int i=0;i<numantennas;i++) {
-    cout << "  " << antennas[i] << ":" << antFiles[i] << endl;
-  }
 
   float sampletime = 1.0/(2.0*bandwidth);
   int fftchannels = numchannels*2;
