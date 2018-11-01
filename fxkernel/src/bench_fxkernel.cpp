@@ -5,6 +5,7 @@
 #include "vectordefs.h"
 
 #include <getopt.h>
+#include <pthread.h>
 
 /** 
  * @file testfxkernel.cpp

@@ -491,9 +491,11 @@ int main(int argc, char *argv[])
     CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
 #else
     int ccblock_width = 128;
-    int nantxp = numantennas*2;
+
+    //int nantxp = numantennas*2;
+    int nantxp = numantennas;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-    CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
+    CCAH3<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
 #endif
   }
   
