@@ -8,8 +8,8 @@
 #include <pthread.h>
 
 /** 
- * @file testfxkernel.cpp
- * @brief A test harness for fxkernel
+ * @file bench_fxkernel.cpp
+ * @brief A behcnmark usingfxkernel
  * @see FxKernel
  *   
  * This test harness reads a brief and simple config file, then creates a single
@@ -24,7 +24,7 @@
  */
 
 
-#define MAXTHREAD  64
+#define MAXTHREAD  100
 
 
 #define SEED 48573
@@ -40,7 +40,8 @@ double lo;        // The local oscillator frequency, in Hz
 double bandwidth; // The bandwidth, in Hz
 double **delays;    // Delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration
 double * antfileoffsets; // Not used
-int nloop = 10;   //  Number of times to loop
+int nloop = 2;   //  Number of times to loop
+int nbuf  = 5;   // Number of "subints" to loop between 
 
 pthread_mutex_t childready_mutex[MAXTHREAD];
 pthread_mutex_t start_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -93,24 +94,22 @@ void *fxbench(void *arg) {
 
   tId = *((int*)arg);
 
-  // Make a copy if the input data
+  // Make a nbuf copies copy of the input data
 
-  u8 **data = (u8**)malloc(sizeof(u8*)*numantennas);
-  for (int i=0; i<numantennas; i++) {
-    data[i] = vectorAlloc_u8(subintbytes);
-    vectorCopy_u8(inputdata[i], data[i], subintbytes);
+  u8 ***data = new u8**[nbuf];
+  for (int j=0; j<nbuf; j++) {
+    data[j] = new u8*[numantennas];
+    for (int i=0; i<numantennas; i++) {
+      data[j][i] = vectorAlloc_u8(subintbytes);
+      vectorCopy_u8(inputdata[i], data[j][i], subintbytes);
+    }
   }
 
   // create the FxKernel
   FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth);
 
-  // Give the fxkernel its pointer to the input data
-  fxkernel.setInputData(data);
-
   // Set the delays
   fxkernel.setDelays(delays, antfileoffsets);
-
-  // Wait until other threads are setup
 
   // Tell parent we are ready
   pthread_mutex_unlock(&childready_mutex[tId]);
@@ -120,12 +119,19 @@ void *fxbench(void *arg) {
   pthread_mutex_unlock(&start_mutex);
 
   for (int i=0; i<nloop; i++) {
-    // Run the processing
-    fxkernel.process();
+    for (int j=0; j<nbuf; j++) {
+      // Run the processing
+
+      // Give the fxkernel its pointer to the input data
+      fxkernel.setInputData(data[j]);
+      fxkernel.process();
+    }
   }
 
-  for (int i=0; i<numantennas; i++) {
-    vectorFree(data[i]);
+  for (int j=0; j<nbuf; j++) {
+    for (int i=0; i<numantennas; i++) {
+      vectorFree(data[j][i]);
+    }
   }
 
   pthread_exit(NULL);
@@ -147,6 +153,7 @@ int main(int argc, char *argv[])
 
   struct option options[] = {
     {"nloop", 1, 0, 'n'},
+    {"nbuf", 1, 0, 'b'},
     {"threads", 1, 0, 't'},
     {"help", 0, 0, 'h'},
     {0, 0, 0, 0}
@@ -162,13 +169,14 @@ int main(int argc, char *argv[])
     break
   
   while (1) {
-    int opt = getopt_long_only(argc, argv, "n:t:", options, NULL);
+    int opt = getopt_long_only(argc, argv, "n:t:b:", options, NULL);
     if (opt==EOF) break;
 
     switch (opt) {
     
       CASEINT('n', nloop);
       CASEINT('t', nthread);
+      CASEINT('b', nbuf);
 
   case 'h':
       printf("Usage: bench_fxkernel [options] <config> \n");
@@ -183,8 +191,10 @@ int main(int argc, char *argv[])
     }
   }
 
-
-
+  if (nthread>MAXTHREAD) {
+    cout << "Warning - maximum number of threads = " << MAXTHREAD << endl;
+    nthread = MAXTHREAD;
+  }
       
   // check invocation, get the config file name
   if (argc != optind+1) {
@@ -215,7 +225,7 @@ int main(int argc, char *argv[])
   float subintTime = sampletime*fftchannels*numffts*1000.0;
   
   cout << "Subint time is " << subintTime << " msec" << std::endl;
-  cout << "Processing " << subintTime*nloop*nthread/1000 << " sec " << endl;
+  cout << "Processing " << subintTime*nloop*nbuf*nthread/1000 << " sec " << endl;
   
   // Allocate space in the buffers for the data and the delays
   allocDataHost(&inputdata, numantennas, numchannels, numffts, nbit, nPol, iscomplex, subintbytes);
@@ -269,7 +279,7 @@ int main(int argc, char *argv[])
 
   std::cout << "Run time was " << t1.count() << " milliseconds" << endl;
 
-  uint64_t totalBits = (uint64_t)subintbytes * nloop * nthread * 8 * numantennas;
+  uint64_t totalBits = (uint64_t)subintbytes * nloop * nbuf * nthread * 8 * numantennas;
 
   std::cout << "    " << totalBits/f_secs.count()/1e6 << " Mbps" << endl;
 
