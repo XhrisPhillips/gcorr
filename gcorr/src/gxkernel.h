@@ -70,6 +70,7 @@ __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int
 __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk);
 __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nantxp, int nfft, int nchan, int fftwidth);
 __global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth);
+__global__ void CCAH3(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth);
 __global__ void printArray(cuComplex *a);
 __global__ void printArrayInt(int8_t *a);
 

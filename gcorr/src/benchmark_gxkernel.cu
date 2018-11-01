@@ -784,6 +784,7 @@ int main(int argc, char *argv[]) {
   timerAdd(&timers, "finaliseAccum");
   timerAdd(&timers, "CrossCorrAccumHoriz");
   timerAdd(&timers, "CCAH2");
+  timerAdd(&timers, "CCAH3");
   for (i = 0; i < arguments.nloops; i++) {
 
     timerStart(&timers, "CrossCorr");
@@ -805,6 +806,13 @@ int main(int argc, char *argv[]) {
     timerEnd(&timers);
     
     timerStart(&timers, "CCAH2");
+    CCAH2<<<ccblock2, ccblock_width>>>(baselineData, channelisedData,
+				      arguments.nantennas, numffts,
+				      arguments.nchannels, fftsamples);
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
+
+    timerStart(&timers, "CCAH3");
     CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
 				      arguments.nantennas, numffts,
 				      arguments.nchannels, fftsamples);
@@ -815,6 +823,7 @@ int main(int argc, char *argv[]) {
   timerPrintStatistics(&timers, "finaliseAccum", implied_time, jsonvis);
   timerPrintStatistics(&timers, "CrossCorrAccumHoriz", implied_time, jsonvis);
   timerPrintStatistics(&timers, "CCAH2", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "CCAH3", implied_time, jsonvis);
   
   closeJson(jsonvis);
   

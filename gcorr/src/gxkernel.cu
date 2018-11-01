@@ -354,7 +354,10 @@ __global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const 
 */
 
 
-__global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk) { 
+__global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk) {
+  // Number of channels 
+
+  
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
   int ochan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan;
@@ -482,8 +485,10 @@ __global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nff
     int ai = ii/2;
     int aj = ij/2;
 
-    if (ai>=aj || ai>=nant || aj>=nant) return;
 
+    if (ai>=aj || ai>=nant || aj>=nant) {
+      return;
+    }
     int pi = ii%2;
     int pj = ij%2;
 
@@ -512,6 +517,74 @@ __global__ void CCAH2(cuComplex *accum, const cuComplex *ants, int nant, int nff
     a.x /= nfft;
     a.y /= nfft;
     accum[b*nchan+t] = a;
+}
+
+__global__ void CCAH3(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+    int t = threadIdx.x+blockIdx.x*blockDim.x;
+    if (t>=nchan) return;
+
+    // Assuming nPol ==2 !!!!
+    
+    // blockIdx.y: index of first vector (antennaindex)
+    // blockIdx.z: index delta to second vector, minus 1.
+    int ant1 = blockIdx.y;
+    int ant2 = ant1 + blockIdx.z + 1;
+
+    if (ant2>=nant)  return;
+
+    // index into output vector blocks: = (j-i-1) + n-1 + ... + n-i
+    int b = ant1*nant-ant1*(ant1+1)/2 + -ant1 + ant2-1;
+
+    int s = nfft*fftwidth;
+    
+    const float2* iv = ants+ant1*s*2+t;
+    const float2* jv = ants+ant2*s*2+t;
+
+    float2 u1 = iv[0];
+    float2 v1 = jv[0];
+    float2 u2 = iv[s];
+    float2 v2 = jv[s];
+    float2 a1;
+    float2 a2;
+    float2 a3;
+    float2 a4;
+    a1.x = u1.x*v1.x + u1.y*v1.y;
+    a1.y = u1.y*v1.x - u1.x*v1.y;
+    a2.x = u1.x*v2.x + u1.y*v2.y;
+    a2.y = u1.y*v2.x - u1.x*v2.y;
+    a3.x = u2.x*v1.x + u2.y*v1.y;
+    a3.y = u2.y*v1.x - u2.x*v1.y;
+    a4.x = u2.x*v2.x + u2.y*v2.y;
+    a4.y = u2.y*v2.x - u2.x*v2.y;
+
+    for (int k = fftwidth; k<s; k += fftwidth) {
+        u1 = iv[k];
+        v1 = jv[k];
+        u2 = iv[k+s];
+        v2 = jv[k+s];
+
+	a1.x += u1.x*v1.x + u1.y*v1.y;
+	a1.y += u1.y*v1.x - u1.x*v1.y;
+	a2.x += u1.x*v2.x + u1.y*v2.y;
+	a2.y += u1.y*v2.x - u1.x*v2.y;
+	a3.x += u2.x*v1.x + u2.y*v1.y;
+	a3.y += u2.y*v1.x - u2.x*v1.y;
+	a4.x += u2.x*v2.x + u2.y*v2.y;
+	a4.y += u2.y*v2.x - u2.x*v2.y;
+    }
+
+    a1.x /= nfft;
+    a1.y /= nfft;
+    a2.x /= nfft;
+    a2.y /= nfft;
+    a3.x /= nfft;
+    a3.y /= nfft;
+    a4.x /= nfft;
+    a4.y /= nfft;
+    accum[4*b*nchan+t] = a1;
+    accum[(4*b+1)*nchan+t] = a2;
+    accum[(4*b+2)*nchan+t] = a3;
+    accum[(4*b+3)*nchan+t] = a4;
 }
 
 __global__ void printArray(cuComplex *a) {
