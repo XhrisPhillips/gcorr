@@ -5,5 +5,5 @@ NTHREAD=<setme>
 
 for c in ${nchan[@]}; do
     echo  -n "NCHAN= $c"
-    ../src/bench_fxkernel -t $NTHREAD test8-${c}.conf | grep Mbps
+    ../src/bench_fxkernel -n 10 -t $NTHREAD test8-${c}.conf | grep Mbps
 done
