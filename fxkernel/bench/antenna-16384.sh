@@ -2,7 +2,7 @@
 
 NTHREAD=<setme>
 NCHAN=16384
-NLOOP=1
+NLOOP=10
 
 nant=(4 6 8 10 12 16)
 
