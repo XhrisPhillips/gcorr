@@ -7,7 +7,6 @@ CC      = gcc -O3 -Wall -g
 NVCC	= nvcc -O3 -arch sm_61
 NVDEBUG = nvcc -lineinfo -g -G
 
-
 EXECS = testgpukernel benchmark_gxkernel validate_xcorr
 
 SOURCES	= gxkernel.cu testgpukernel.cu benchmark_gxkernel.cu validate_xcorr.cu
