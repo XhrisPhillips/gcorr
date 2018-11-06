@@ -26,16 +26,20 @@ __host__ __device__ static __inline__ void cuCdivCf(cuFloatComplex *a, float b)
 }
 
 // Rotate inplace a complex number by theta (radians)
-__device__ static __inline__ void cuRotatePhase (COMPLEX &h, float theta)
+__device__ static __inline__ void cuRotatePhase (COMPLEX &x, float theta)
 {
   float cs, sn;
   sincosf(theta, &sn, &cs);
-    
-  float2 x = __half22float2(h);
-  float px = x.x * cs - x.y * sn; 
-  float py = x.x * sn + x.y * cs;
 
-  h = __floats2half2_rn(px, py);
+#ifdef USEHALF
+  float2 y = __half22float2(x);
+  float px = y.x * cs - y.y * sn; 
+  float py = y.x * sn + y.y * cs;
+#else
+  float px = x.x * cs - x.y * sn;
+  float py = x.x * sn + x.y * cs;
+#endif
+  x = MAKECOMPLEX(px, py);
   return;
 }
 

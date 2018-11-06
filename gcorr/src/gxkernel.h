@@ -2,7 +2,7 @@
 #ifndef _gxkernel
 #define _gxkernel
 
-#define USEHALF
+//#define USEHALF
 
 #include <stdio.h>
 
