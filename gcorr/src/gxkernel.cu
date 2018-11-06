@@ -118,17 +118,6 @@ __global__ void calculateDelaysAndPhases(double * gpuDelays, double lo, double s
   rotationPhaseInfo[iant*numffts*2 + ifft*2 + 1] = (float)(deltadelay * lo)*2*M_PI;
 }
 
-/* Set fringe rotation vectors - dummy routine for now */
-__global__ void setFringeRotation(float *rotVec) {
-  size_t ifft = threadIdx.x + blockIdx.x * blockDim.x;
-  size_t iant = blockIdx.y;
-  int numffts = blockDim.x * gridDim.x;
-
-  rotVec[iant*numffts*2 + ifft*2] = 1e-6;
-  rotVec[iant*numffts*2 + ifft*2+1] = 1e-12;
-}
-
-
 /* Fringe rotate the data, using a linear phase slopre per input FFT. Assume 2 polarisations
 
    threads * gridDim.x is size of FFT

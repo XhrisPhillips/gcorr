@@ -453,11 +453,6 @@ int main(int argc, char *argv[])
       CudaCheckError();
     }
 
-    /*// Fringe Rotate //
-    //cout << "Fringe Rotate" << endl;
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotationPhaseInfo);
-    CudaCheckError();*/
-
 #if 0
     FringeRotate<<<fringeBlocks,fringeThreads>>>(unpackedData, rotationPhaseInfo);
     CudaCheckError();
