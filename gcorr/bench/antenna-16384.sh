@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NLOOP=1
+NLOOP=100
 
 nant=(4 6 8 10 12 16)
 
