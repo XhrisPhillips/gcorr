@@ -12,10 +12,12 @@
 
 #include <cuComplex.h>
 #include <cufft.h>
-#include <cufftXt.h>
-#include <cuda_fp16.h>
-
 #include "common.h"
+#include "gxkernel.h"
+
+#ifdef USEHALF
+#include <cufftXt.h>
+#endif
 
 #define NTHREADS 256
 
@@ -81,10 +83,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
 
-#include "gxkernel.h"
 
-void allocDataGPU(int8_t ***packedData, half2 **unpackedData,
-		  half2 **channelisedData, cuComplex **baselineData, 
+void allocDataGPU(int8_t ***packedData, COMPLEX **unpackedData,
+		  COMPLEX **channelisedData, cuComplex **baselineData, 
 		  float **rotationPhaseInfo, float **fractionalSampleDelays, int **sampleShifts, 
                   double **gpuDelays, int numantenna, int subintsamples, int nbit, 
                   int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum)
@@ -100,12 +101,12 @@ void allocDataGPU(int8_t ***packedData, half2 **unpackedData,
   }
 
   // Unpacked data
-  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*subintsamples*sizeof(half2)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(half2);
+  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*subintsamples*sizeof(COMPLEX)));
+  GPUalloc += numantenna*nPol*subintsamples*sizeof(COMPLEX);
   
   // FFT output
-  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*subintsamples*sizeof(half2)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(half2);
+  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*subintsamples*sizeof(COMPLEX)));
+  GPUalloc += numantenna*nPol*subintsamples*sizeof(COMPLEX);
 
   // Baseline visibilities
   int nbaseline = numantenna*(numantenna-1)/2;
@@ -187,7 +188,7 @@ int main(int argc, char *argv[])
   float *fractionalSampleDelays;
   int *sampleShifts;
   double *gpuDelays;
-  half2 *unpackedData, *channelisedData;
+  COMPLEX *unpackedData, *channelisedData;
   cuComplex *baselineData;
   cufftHandle plan;
   cudaEvent_t start_exec, stop_exec;
@@ -318,6 +319,7 @@ int main(int argc, char *argv[])
   }
   dim3 delayPhaseBlocks = dim3(executionsperthread, numantennas);
 
+#if 0
   // Fringe Rotate
   int fringeThreads;
   numkernelexecutions = fftsamples;
@@ -334,7 +336,8 @@ int main(int argc, char *argv[])
     }
   }
   dim3 fringeBlocks = dim3(executionsperthread, numffts, numantennas);
-
+#endif
+  
   // Fractional Delay
   int fracDelayThreads;
   numkernelexecutions = numchannels;
@@ -398,6 +401,7 @@ int main(int argc, char *argv[])
     }
   }
 
+#ifdef USEHALF
   // Configure CUFFT
   if (cufftCreate(&plan) != CUFFT_SUCCESS) {
     cout << "CUFFT error: Handle creation failed" << endl;
@@ -409,6 +413,12 @@ int main(int argc, char *argv[])
     cout << "CUFFT error: Plan creation failed" << endl;
     return(0);
   }
+#else
+  if (cufftPlan1d(&plan, fftsamples, CUFFT_C2C, nPol*numantennas*numffts) != CUFFT_SUCCESS) {
+    cout << "CUFFT error: Plan creation failed" << endl;
+    return(0);
+  }
+#endif
   
   status = readdata(subintbytes, antStream, inputdata);
   if (status) exit(1);
@@ -462,23 +472,23 @@ int main(int argc, char *argv[])
       CudaCheckError();
     }
 
-    /*// Fringe Rotate //
-    //cout << "Fringe Rotate" << endl;
-    setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotationPhaseInfo);
-    CudaCheckError();*/
-
 #if 0
     FringeRotate<<<fringeBlocks,fringeThreads>>>(unpackedData, rotationPhaseInfo);
     CudaCheckError();
 #endif
   
     // FFT
-    //cout << "FFT data" << endl;
+#ifdef USEHALF
     if (cufftXtExec(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
       cout << "CUFFT error: ExecC2C Forward failed" << endl;
       return(0);
     }
-
+#else
+    if (cufftExecC2C(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+      cout << "CUFFT error: ExecC2C Forward failed" << endl;
+      return(0);
+    }
+#endif
     // Fractional Delay Correction
     FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData, fractionalSampleDelays, numchannels, fftsamples, numffts, subintsamples);
     CudaCheckError();
@@ -500,9 +510,10 @@ int main(int argc, char *argv[])
     CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
 #else
     int ccblock_width = 128;
-    int nantxp = numantennas*2;
+    //int nantxp = numantennas*2;
+    int nantxp = numantennas;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-    CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
+    CCAH3<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
 #endif
   }
   
