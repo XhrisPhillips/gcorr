@@ -7,7 +7,7 @@ CC      = gcc -O3 -Wall -g
 NVCC	= nvcc -O3 -arch sm_61
 NVDEBUG = nvcc -lineinfo -g -G
 
-EXECS = testgpukernel benchmark_gxkernel validate_xcorr
+EXECS = testgpukernel benchmark_gxkernel validate_xcorr testgpukernel_half
 
 SOURCES	= gxkernel.cu testgpukernel.cu benchmark_gxkernel.cu validate_xcorr.cu
 
@@ -33,8 +33,12 @@ all: $(EXECS)
 
 debug: NVCC = $(NVDEBUG)
 debug: all
+
 testgpukernel : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
+
+testgpukernel_half : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
+	$(NVCC) -DUSEHALF $(CUFLAGS) $(CLINK) -o $@ $^
 
 benchmark_gxkernel : gxkernel.cu benchmark_gxkernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
