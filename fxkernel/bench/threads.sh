@@ -2,7 +2,7 @@
 
 nproc=$(nproc)
 maxThreads=$((nproc+5))
-# maxThread=20
+# maxThreads=20
 NLOOP=10
 
 for t in $(seq 1 $maxThreads); do
