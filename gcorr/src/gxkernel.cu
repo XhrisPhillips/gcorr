@@ -3,24 +3,26 @@
 #include <math.h>
 
 // Add complex number to another number 
-__host__ __device__ static __inline__ void cuCaddIf(cuFloatComplex *a, cuFloatComplex b)
-{
+__device__ static __inline__ void cuCaddI(cuFloatComplex *a, COMPLEX b) {
+  (*a).x += HALF2FLOAT(b.x);
+  (*a).y += HALF2FLOAT(b.y);
+}
+
+// Add complex number to another number  - full precision
+__device__ static __inline__ void cuCaddIf(cuFloatComplex *a, cuFloatComplex b) {
   (*a).x += b.x;
   (*a).y += b.y;
 }
 
 // Multiply a complex number by the conjugate of the other
-__host__ __device__ static __inline__ cuComplex cuCmulConjf (cuComplex x, cuComplex y)
-{
-    cuFloatComplex prod;
-    prod = make_cuFloatComplex  ((cuCrealf(x) * cuCrealf(y)) + (cuCimagf(x) * cuCimagf(y)),
-                                 (cuCimagf(x) * cuCrealf(y)) - cuCrealf(x) * cuCimagf(y));
-    return prod;
-}    
+__device__ static __inline__ COMPLEX cuCmulConjf (COMPLEX x, COMPLEX y) {
+  COMPLEX prod;
+  prod = MAKECOMPLEX(x.x*y.x + x.y*y.y, x.y*y.x - x.x * y.y);
+  return prod;
+}
 
 // Divide a complex number by a constant
-__host__ __device__ static __inline__ void cuCdivCf(cuFloatComplex *a, float b)
-{
+ __device__ static __inline__ void cuCdivCf(cuFloatComplex *a, float b) {
   (*a).x /= b;
   (*a).y /= b;
 }
@@ -345,7 +347,7 @@ __global__ void old_unpack2bit_2chan(cuComplex **dest, const int8_t *src, const 
 */
 
 
-__global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk) {
+__global__ void CrossCorr(COMPLEX *ants, cuComplex *accum, int nant, int nchunk) {
   // Number of channels 
 
   
@@ -360,13 +362,13 @@ __global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchun
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[accumIdx(b, 0, ochan, nchan*parallelAccum)],
+	cuCaddI(&accum[accumIdx(b, 0, ochan, nchan*parallelAccum)],
 	  cuCmulConjf(ants[antIdx(i, 0, ichan, subintsamples)], ants[antIdx(j, 0, ichan, subintsamples)]));
-	cuCaddIf(&accum[accumIdx(b, 1, ochan, nchan*parallelAccum)],
+	cuCaddI(&accum[accumIdx(b, 1, ochan, nchan*parallelAccum)],
 	  cuCmulConjf(ants[antIdx(i, 0, ichan, subintsamples)], ants[antIdx(j, 1, ichan, subintsamples)]));
-	cuCaddIf(&accum[accumIdx(b, 2, ochan, nchan*parallelAccum)],
+	cuCaddI(&accum[accumIdx(b, 2, ochan, nchan*parallelAccum)],
 	  cuCmulConjf(ants[antIdx(i, 1, ichan, subintsamples)], ants[antIdx(j, 0, ichan, subintsamples)]));
-	cuCaddIf(&accum[accumIdx(b, 3, ochan, nchan*parallelAccum)],
+	cuCaddI(&accum[accumIdx(b, 3, ochan, nchan*parallelAccum)],
 	  cuCmulConjf(ants[antIdx(i, 1, ichan, subintsamples)], ants[antIdx(j, 1, ichan, subintsamples)]));
 	b++;
       }
@@ -375,9 +377,9 @@ __global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchun
   }
 }
 
-__global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk) { 
+__global__ void CrossCorrShared(COMPLEX *ants, cuComplex *accum, int nant, int nchunk) { 
 
-  extern __shared__ cuComplex antShar[];
+  extern __shared__ COMPLEX antShar[];
   
   int nchan = blockDim.x * gridDim.x;
   size_t ichan = threadIdx.x + blockIdx.x * blockDim.x + blockIdx.y * nchan * nchunk * 2;
@@ -393,10 +395,10 @@ __global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int
     b=0;
     for (i=0; i<nant-1; i++) {
       for (j=i+1; j<nant; j++) {
-	cuCaddIf(&accum[accumIdx(b, 0, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2], antShar[j*2]));
-	cuCaddIf(&accum[accumIdx(b, 1, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
-	cuCaddIf(&accum[accumIdx(b, 2, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
-	cuCaddIf(&accum[accumIdx(b, 3, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
+	cuCaddI(&accum[accumIdx(b, 0, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2], antShar[j*2]));
+	cuCaddI(&accum[accumIdx(b, 1, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2], antShar[j*2+1]));
+	cuCaddI(&accum[accumIdx(b, 2, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2+1], antShar[j*2]));
+	cuCaddI(&accum[accumIdx(b, 3, ochan, nchan*parallelAccum)], cuCmulConjf(antShar[i*2+1], antShar[j*2+1]));
 	b++;
       }
     }
@@ -420,7 +422,7 @@ __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk) {
 
 // Launched with antenna indices in block .y and .z.
 // (Turns out having the pol loop in the kernel performs poorly!)
-__global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+__global__ void CrossCorrAccumHoriz(cuComplex *accum, const COMPLEX *ants, int nant, int nfft, int nchan, int fftwidth) {
     int t = threadIdx.x+blockIdx.x*blockDim.x;
     if (t>=nchan) return;
 
@@ -438,12 +440,12 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
     for (int pi = 0; pi<2; ++pi) {
 	for (int pj = 0; pj<2; ++pj) {
-	    const float2* iv = &ants[antIdx(i, pi, t, s)];
-	    const float2* jv = &ants[antIdx(j, pj, t, s)];
+	    const COMPLEX* iv = &ants[antIdx(i, pi, t, s)];
+	    const COMPLEX* jv = &ants[antIdx(j, pj, t, s)];
 
-	    float2 u = iv[0];
-	    float2 v = jv[0];
-	    float2 a;
+	    COMPLEX u = iv[0];
+	    COMPLEX v = jv[0];
+	    COMPLEX a;
 	    a.x = u.x*v.x + u.y*v.y;
 	    a.y = u.y*v.x - u.x*v.y;
 
@@ -457,7 +459,7 @@ __global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int
 
 	    a.x /= nfft;
 	    a.y /= nfft;
-	    accum[accumIdx(b, pi*2+pj, t, nchan)] = a;
+	    accum[accumIdx(b, pi*2+pj, t, nchan)] = HALF2FLOAT2(a);
 	}
     }
 }

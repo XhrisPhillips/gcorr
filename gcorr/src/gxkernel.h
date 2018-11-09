@@ -80,10 +80,10 @@ __global__ void FringeRotate(cuComplex *ant, float *rotVec);
 __global__ void FringeRotate2(cuComplex *ant, float *rotVec);
 __global__ void FracSampleCorrection(COMPLEX *ant, float *fractionalDelayValues,
 				     int numchannels, int fftchannels, int numffts, int subintsamples);
-__global__ void CrossCorr(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
-__global__ void CrossCorrShared(cuComplex *ants, cuComplex *accum, int nant, int nchunk);
+__global__ void CrossCorr(COMPLEX *ants, cuComplex *accum, int nant, int nchunk);
+__global__ void CrossCorrShared(COMPLEX *ants, cuComplex *accum, int nant, int nchunk);
 __global__ void finaliseAccum(cuComplex *accum, int parallelAccum, int nchunk);
-__global__ void CrossCorrAccumHoriz(cuComplex *accum, const cuComplex *ants, int nantxp, int nfft, int nchan, int fftwidth);
+__global__ void CrossCorrAccumHoriz(cuComplex *accum, const COMPLEX *ants, int nantxp, int nfft, int nchan, int fftwidth);
 __global__ void CCAH2(cuComplex *accum, const COMPLEX *ants, int nant, int nfft, int nchan, int fftwidth);
 __global__ void CCAH3(cuComplex *accum, const COMPLEX *ants, int nant, int nfft, int nchan, int fftwidth);
 __global__ void printArray(cuComplex *a);

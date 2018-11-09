@@ -88,10 +88,17 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 #include "gxkernel.h"
 
+#ifdef USEHALF
+__global__ void convertFp32ToFp16 (half2 *out, cuComplex *in, int n) {
+   int idx = blockDim.x * blockIdx.x + threadIdx.x;
+   if (idx < n) {
+     out[idx] =  __float22half2_rn(in[idx]);
+   }
+}
+#endif
+
 void allocDataGPU(cuComplex **channelisedData, cuComplex **baselineData, 
-		  int numantenna, int subintsamples,  int nchan, int nPol, int parallelAccum )
-//, int nbit, int numffts)
-{
+		  int numantenna, int subintsamples,  int nchan, int nPol, int parallelAccum ) {
   unsigned long long GPUalloc = 0;
 
   // FFT output
@@ -213,7 +220,8 @@ void printBaseline(complex<float> *baselineData, int numantennas, int nPol, int 
 void compareBaseline(complex<float> *data1, complex<float> *data2, int numantennas, int nPol, int numchannels) {
   int polProd; // 1 or 4
   float diff, maxDiff = 0;
-  double sum = 0;
+  float diffPercent, maxDiffPercent = 0;
+  double sum, sumPercent = 0;
   
   
   if (nPol==1)
@@ -229,9 +237,15 @@ void compareBaseline(complex<float> *data1, complex<float> *data2, int numantenn
     diff = abs(data1[i] - data2[i]);
     if (diff>maxDiff) maxDiff = diff;
     sum += diff;
+
+    if (abs(data1[i])!=0.0) {
+      diffPercent = diff/abs(data1[i]);
+      if (diffPercent>maxDiffPercent) maxDiffPercent = diffPercent;
+      sumPercent += diffPercent;
+    }
   }
-  printf("Maximum difference = %.4f\n", maxDiff);
-  printf("Average difference = %.4f\n", sum/nval);
+  printf("Maximum difference = %.4f (%.2f%%)\n", maxDiff, maxDiffPercent*100);
+  printf("Average difference = %.4f (%.2f%%)\n", sum/nval, sumPercent*100.0/nval);
 
 }
 
@@ -349,7 +363,6 @@ int main(int argc, char *argv[])
   CURAND_CALL(curandDestroyGenerator(gen));
 
   // Copy data to back to CPU
-  cout << "Copy data to GPU" << endl;
   gpuErrchk(cudaMemcpy(channelisedData_h, channelisedData, numantennas*nPol*subintsamples*sizeof(cuComplex),
 		       cudaMemcpyDeviceToHost));
 
@@ -357,24 +370,36 @@ int main(int argc, char *argv[])
 
   cout << "***CPU***"<<endl;
   printBaseline(baselineData_h, numantennas, nPol, numchannels);
-  
+
+#ifdef USEHALF
+  // Need to convert floats to half
+  COMPLEX *channelisedData_half;
+  int totalSamples = numantennas*nPol*subintsamples;
+  gpuErrchk(cudaMalloc(&channelisedData_half, totalSamples*sizeof(COMPLEX)));
+  convertFp32ToFp16<<<(totalSamples+255)/256,256>>>(channelisedData_half, channelisedData, totalSamples);
+  CudaCheckError();
+  COMPLEX *chanData = channelisedData_half;
+#else
+  cuComplex *chanData = channelisedData;
+#endif
+
   cout << "***CrossCorr***" << endl;
   // Zero output data
   gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*sizeof(cuComplex)*parallelAccum));
-  CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
+  CrossCorr<<<corrBlocks,corrThreads>>>(chanData, baselineData, numantennas, nchunk);
   CudaCheckError();
   finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum, nchunk);
   CudaCheckError();
 
   gpuErrchk(cudaMemcpy(gpubaselineData_h, baselineData, nbaseline*polProd*numchannels*sizeof(cuComplex),
 		       cudaMemcpyDeviceToHost));
-  printBaseline(gpubaselineData_h, numantennas, nPol, numchannels);
+  //printBaseline(gpubaselineData_h, numantennas, nPol, numchannels);
   compareBaseline(baselineData_h, gpubaselineData_h, numantennas, nPol, numchannels);
 
   cout << "***CrossCorrAccumHoriz***" << endl;
   int ccblock_width = 128;
   dim3 ccblock(1+(numchannels-1)/ccblock_width, numantennas-1, numantennas-1);
-  CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
+  CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, chanData, numantennas, numffts, numchannels, fftsamples);
   CudaCheckError();
 
   gpuErrchk(cudaMemcpy(gpubaselineData_h, baselineData, nbaseline*polProd*numchannels*sizeof(cuComplex),
@@ -388,7 +413,7 @@ int main(int argc, char *argv[])
   // Zero output data
   gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*sizeof(cuComplex)*parallelAccum));
   dim3 ccblock2(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-  CCAH2<<<ccblock2, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
+  CCAH2<<<ccblock2, ccblock_width>>>(baselineData, chanData, numantennas, numffts, numchannels, fftsamples);
   cudaDeviceSynchronize();
 
   // Copy baseline data to back to CPU
@@ -397,14 +422,13 @@ int main(int argc, char *argv[])
 
   //printBaseline(gpubaselineData_h, numantennas, nPol, numchannels);
   compareBaseline(baselineData_h, gpubaselineData_h, numantennas, nPol, numchannels);
-
   cout << "**CCAH3**" << endl;
 
   // Zero output data
   gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*sizeof(cuComplex)*parallelAccum));
   nantxp = numantennas;
   dim3 ccblock3(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-  CCAH3<<<ccblock3, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
+  CCAH3<<<ccblock3, ccblock_width>>>(baselineData, chanData, numantennas, numffts, numchannels, fftsamples);
   cudaDeviceSynchronize();
 
   // Copy baseline data to back to CPU
