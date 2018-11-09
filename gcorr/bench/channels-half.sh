@@ -8,5 +8,5 @@ NLOOP=100
 
 for c in ${nchan[@]}; do
     echo  -n "NCHAN= $c  "
-    ../src/testgpukernel_half -g 1 -n $NLOOP test8-${c}.conf | grep Gbps
+    ../src/testgpukernel_half -n $NLOOP test8-${c}.conf | grep Gbps
 done
