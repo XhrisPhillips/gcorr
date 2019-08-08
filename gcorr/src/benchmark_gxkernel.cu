@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <strings.h>
 #include <argp.h>
 #include <complex.h>
@@ -38,6 +39,266 @@ void postLaunchCheck() {
   }
 }
 
+struct timerCollection {
+  cudaEvent_t startTime;
+  cudaEvent_t endTime;
+  int nTimers;
+  char **timerNames;
+  int *numIterations;
+  float **timerResults;
+  float **timerStatistics;
+  int *timerCalculated;
+  int currentTimer;
+};
+
+void timerInitialise(struct timerCollection *tc) {
+  // Set up the structure correctly
+  gpuErrchk(cudaEventCreate(&(tc->startTime)));
+  gpuErrchk(cudaEventCreate(&(tc->endTime)));
+  tc->nTimers = 0;
+  tc->timerNames = NULL;
+  tc->numIterations = NULL;
+  tc->timerResults = NULL;
+  tc->timerStatistics = NULL;
+  tc->timerCalculated = NULL;
+  tc->currentTimer = -1;
+}
+
+void timerAdd(struct timerCollection *tc, const char* timerName) {
+  // Add a timer to the collector.
+  tc->nTimers ++;
+  tc->timerNames = (char **)realloc(tc->timerNames, tc->nTimers * sizeof(char *));
+  tc->timerNames[tc->nTimers - 1] = (char *)malloc(256 * sizeof(char));
+  strcpy(tc->timerNames[tc->nTimers - 1], timerName);
+  tc->numIterations = (int *)realloc(tc->numIterations, tc->nTimers * sizeof(int));
+  tc->numIterations[tc->nTimers - 1] = 0;
+  tc->timerResults = (float **)realloc(tc->timerResults, tc->nTimers * sizeof(float *));
+  tc->timerResults[tc->nTimers - 1] = NULL;
+  tc->timerStatistics = (float **)realloc(tc->timerStatistics, tc->nTimers * sizeof(float *));
+  tc->timerCalculated = (int *)realloc(tc->timerCalculated, tc->nTimers * sizeof(int));
+  tc->timerCalculated[tc->nTimers - 1] = 0;
+}
+
+int timerStart(struct timerCollection *tc, const char *timerName) {
+  // Start the timer.
+  // Return immediately if a timer has already been started.
+  if (tc->currentTimer != -1) {
+    printf("timerStart: another timer is already running!\n");
+    return -1;
+  }
+  
+  int i;
+  for (i = 0; i < tc->nTimers; i++) {
+    if (strcmp(tc->timerNames[i], timerName) == 0) {
+      tc->currentTimer = i;
+      break;
+    }
+  }
+
+  if (tc->currentTimer >= 0) {
+    tc->timerCalculated[tc->currentTimer] = 0;
+    gpuErrchk(cudaEventRecord(tc->startTime, 0));
+    return 0;
+  }
+
+  printf("timerStart: could not find timer entry for %s!\n", timerName);
+  return -2;
+}
+
+float timerEnd(struct timerCollection *tc) {
+
+  // Catch any kernel-launch errors
+  gpuErrchk(cudaPeekAtLastError());
+
+  // Stop the running timer.
+  // Return immediately if no timer has been started.
+  if (tc->currentTimer == -1) {
+    return -1.0f;
+  }
+
+  // Keep a copy of the current timer.
+  int ct = tc->currentTimer;
+  
+  // Stop the timer.
+  float elapsed_ms = -1.0f;
+  gpuErrchk(cudaEventRecord(tc->endTime, 0));
+  gpuErrchk(cudaEventSynchronize(tc->endTime));
+  gpuErrchk(cudaEventElapsedTime(&elapsed_ms, tc->startTime, tc->endTime));
+
+  // Add an iteration to the right place.
+  tc->numIterations[ct] += 1;
+  int nint = tc->numIterations[ct];
+  tc->timerResults[ct] = (float *)realloc(tc->timerResults[ct],
+					  nint * sizeof(float));
+  if (tc->timerResults[ct] == NULL) {
+    printf("timerEnd realloc failed\n");
+    exit(0);
+  }  
+  tc->timerResults[ct][nint - 1] = elapsed_ms;
+
+  // Reset the current timer.
+  tc->currentTimer = -1;
+  
+  // Return the elapsed time.
+  //return tc->timerResults[ct][nint];
+  return elapsed_ms;
+}
+
+void time_stats_single(float *timearray, int ntime, float **output) {
+  int i = 0;
+  *output = (float *)malloc(3 * sizeof(float));
+
+  (*output)[0] = 0.0;
+  for (i = 1; i < ntime; i++) {
+    (*output)[0] += timearray[i];
+    if (i == 1) {
+      (*output)[1] = timearray[i];
+      (*output)[2] = timearray[i];
+    } else {
+      (*output)[1] = (timearray[i] < (*output)[1]) ? timearray[i] : (*output)[1];
+      (*output)[2] = (timearray[i] > (*output)[2]) ? timearray[i] : (*output)[2];
+    }
+  }
+
+  if ((ntime - 1) > 0) {
+    (*output)[0] /= (float)(ntime - 1);
+  }
+
+  return;
+			   
+}
+
+
+void prepareJson(FILE **fp, char *filename) {
+  *fp = fopen(filename, "w");
+  fprintf(*fp, "{ ");
+  printf("JSON file %s opened for writing\n", filename);
+}
+
+void closeJson(FILE *fp) {
+  if (fp == NULL) return;
+
+  fprintf(fp, " }\n");
+  fclose(fp);
+}
+
+void startJsonObject(FILE *fp, const char *tag, int first) {
+  if (fp == NULL) return;
+
+  if (first == 1) {
+    fprintf(fp, "\"%s\":", tag);
+  } else {
+    fprintf(fp, ",\"%s\":", tag);
+  }    
+  fprintf(fp, "{");
+}
+
+void endJsonObject(FILE *fp) {
+  if (fp == NULL) return;
+
+  fprintf(fp, "}");
+}
+
+void writeJsonValue(FILE *fp, const char *type, int first, const char *tag, ...) {
+  if (fp == NULL) return;
+
+  va_list ap;
+  va_start(ap, tag);
+  
+  if (first == 1) {
+    fprintf(fp, "\"%s\":", tag);
+  } else {
+    fprintf(fp, ",\"%s\":", tag);
+  }    
+  if (strcmp(type, "int") == 0) {
+    int v = va_arg(ap, int);
+    fprintf(fp, "%d", v);
+  } else if (strcmp(type, "float") == 0) {
+    double v = va_arg(ap, double);
+    fprintf(fp, "%f", (float)v);
+  } else if (strcmp(type, "string") == 0) {
+    char *v = va_arg(ap, char*);
+    fprintf(fp, "\"%s\"", v);
+  }
+}
+
+void writeJsonArray(FILE *fp, const char *type, int first, const char *tag, int len, ...) {
+  if (fp == NULL) return;
+
+  va_list ap;
+  va_start(ap, len);
+  
+  if (first == 1) {
+    fprintf(fp, "\"%s\": [", tag);
+  } else {
+    fprintf(fp, ",\"%s\": [", tag);
+  }    
+  int i;
+  if (strcmp(type, "int") == 0) {
+    int *iarr = va_arg(ap, int*);
+    for (i = 0; i < len; i++) {
+      if (i > 0) {
+	fprintf(fp, ",");
+      }
+      fprintf(fp, "%d", iarr[i]);
+    }
+  } else if (strcmp(type, "float") == 0) {
+    float *farr = va_arg(ap, float*);
+    for (i = 0; i < len; i++) {
+      if (i > 0) {
+	fprintf(fp, ",");
+      }
+      fprintf(fp, "%f", farr[i]);
+    }
+  } else if (strcmp(type, "string") == 0) {
+    char **carr = va_arg(ap, char**);
+    for (i = 0; i < len; i++) {
+      if (i > 0) {
+	fprintf(fp, ",");
+      }
+      fprintf(fp, "\"%s\"", carr[i]);
+    }
+  }
+  fprintf(fp, "]");
+}
+
+void timerPrintStatistics(struct timerCollection *tc, const char *timerName,
+			  float implied_time, FILE *fp) {
+  // Calculate statistics if required and print the output.
+  int i, c = -1;
+
+  // Find the appropriate timer.
+  for (i = 0; i < tc->nTimers; i++) {
+    if (strcmp(tc->timerNames[i], timerName) == 0) {
+      c = i;
+      break;
+    }
+  }
+
+  if (c >= 0) {
+    if (tc->timerCalculated[c] == 0) {
+      // Calculate the statistics.
+      (void)time_stats_single(tc->timerResults[c], tc->numIterations[c],
+			      &(tc->timerStatistics[c]));
+      tc->timerCalculated[c] = 1;
+    }
+    startJsonObject(fp, timerName, 0);
+    printf("\n==== TIMER: %s ====\n", tc->timerNames[c]);
+    printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
+    printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
+	   (tc->numIterations[c] - 1), (tc->timerStatistics[c][0]),
+	   (tc->timerStatistics[c][1]), (tc->timerStatistics[c][2]),
+	   implied_time, ((implied_time * 1e3) / tc->timerStatistics[c][0]));
+    writeJsonValue(fp, "int", 1, "niterations", (tc->numIterations[c] - 1));
+    writeJsonValue(fp, "float", 0, "average", tc->timerStatistics[c][0]);
+    writeJsonValue(fp, "float", 0, "minimum", tc->timerStatistics[c][1]);
+    writeJsonValue(fp, "float", 0, "maximum", tc->timerStatistics[c][2]);
+    writeJsonValue(fp, "float", 0, "speedup", ((implied_time * 1e3) / tc->timerStatistics[c][0]));
+    
+    endJsonObject(fp);
+  }
+}
+
 const char *argp_program_version = "benchmark_gxkernel 1.0";
 static char doc[] = "benchmark_gxkernel -- testing performance of various kernels";
 static char args_doc[] = "";
@@ -53,6 +314,7 @@ static struct argp_option options[] = {
   { "verbose", 'v', 0, 0, "output more" },
   { "bits", 'B', "NBITS", 0, "number of bits assumed in the data" },
   { "complex", 'I', 0, 0, "the data input is complex sampled" },
+  { "json", 'j', "JSONFILE", 0, "output the timing data to this JSON file" },
   { 0 }
 };
 
@@ -66,6 +328,7 @@ struct arguments {
   int verbose;
   int nbits;
   int complexdata;
+  char jsonfile[256];
 };
 
 /* The option parser */
@@ -100,6 +363,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   case 'C':
     arguments->complexdata = 1;
     break;
+  case 'j':
+    strncpy(arguments->jsonfile, arg, 256);
+    break;
   }
   return 0;
 }
@@ -107,25 +373,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 /* The argp parser */
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
-void time_stats(float *timearray, int ntime, float *average, float *min, float *max) {
-  int i = 0;
-  *average = 0.0;
-  for (i = 1; i < ntime; i++) {
-    *average += timearray[i];
-    if (i == 1) {
-      *min = timearray[i];
-      *max = timearray[i];
-    } else {
-      *min = (timearray[i] < *min) ? timearray[i] : *min;
-      *max = (timearray[i] > *max) ? timearray[i] : *max;
-    }
-  }
-
-  if ((ntime - 1) > 0) {
-    *average /= (float)(ntime - 1);
-  }
-  return;
-}
 
 
 int main(int argc, char *argv[]) {
@@ -141,26 +388,54 @@ int main(int argc, char *argv[]) {
   arguments.verbose = 0;
   arguments.nbits = 2;
   arguments.complexdata = 0;
+  arguments.jsonfile[0] = 0;
   int npolarisations = 2;
   curandGenerator_t gen;
+
+  FILE *jsonvis = NULL;
   
   argp_parse(&argp, argc, argv, 0, 0, &arguments);
 
+  // Prepare a JSON file if necessary.
+  if (strlen(arguments.jsonfile) > 0) {
+    prepareJson(&jsonvis, arguments.jsonfile);
+  }
+  
   // Always discard the first trial.
   arguments.nloops += 1;
 
+  // Calculate the samplegranularity
+  int samplegranularity = 8 / (arguments.nbits * npolarisations);
+  if (samplegranularity < 1)
+  {
+    samplegranularity = 1;
+  }
   
   // Calculate the number of FFTs
-  int fftchannels = arguments.nchannels * ((arguments.complexdata == 1) ? 1 : 2);
-  int numffts = arguments.nsamples / fftchannels;
-  printf("fftchannels = %d , numffts is %d\n", fftchannels, numffts);
+  int fftsamples = arguments.nchannels * ((arguments.complexdata == 1) ? 1 : 2);
+  int numffts = arguments.nsamples / fftsamples;
+  printf("fftsamples = %d , numffts is %d\n", fftsamples, numffts);
   if (numffts % 8) {
     printf("Unable to proceed, numffts must be divisible by 8!\n");
     exit(0);
   }
 
+  // Output our parameters.
+  writeJsonValue(jsonvis, "int", 1, "nantennas", arguments.nantennas);
+  writeJsonValue(jsonvis, "int", 0, "nsamples", arguments.nsamples);
+  writeJsonValue(jsonvis, "int", 0, "nchannels", arguments.nchannels);
+  writeJsonValue(jsonvis, "int", 0, "complexdata", arguments.complexdata);
+  writeJsonValue(jsonvis, "int", 0, "samplegranularity", samplegranularity);
+  writeJsonValue(jsonvis, "int", 0, "fftsamples", fftsamples);
+  writeJsonValue(jsonvis, "int", 0, "numffts", numffts);
+  
   printf("BENCHMARK PROGRAM STARTS\n\n");
 
+  // Our collection of timers.
+  struct timerCollection timers;
+  timerInitialise(&timers);
+  float timerResult;
+  
   /*
    * This benchmarks unpacker kernels.
    */
@@ -168,36 +443,48 @@ int main(int argc, char *argv[]) {
   cuComplex **unpackedData, *unpackedData2;
   int8_t **packedData, **packedData8;
   int32_t *sampleShift;
-  float *dtime_unpack=NULL, *dtime_unpack2=NULL, *dtime_unpack3=NULL, *dtime_unpack4=NULL;
-  float *dtime_delaycalc=NULL;
-  float averagetime_unpack = 0.0, mintime_unpack = 0.0, maxtime_unpack = 0.0;
-  float averagetime_unpack2 = 0.0, mintime_unpack2 = 0.0, maxtime_unpack2 = 0.0;
-  float averagetime_unpack3 = 0.0, mintime_unpack3 = 0.0, maxtime_unpack3 = 0.0;
-  float averagetime_unpack4 = 0.0, mintime_unpack4 = 0.0, maxtime_unpack4 = 0.0;
-  float averagetime_delaycalc = 0.0, mintime_delaycalc = 0.0, maxtime_delaycalc = 0.0;
   float implied_time;
-  cudaEvent_t start_test_unpack, end_test_unpack;
-  cudaEvent_t start_test_unpack2, end_test_unpack2;
-  cudaEvent_t start_test_unpack3, end_test_unpack3;
-  cudaEvent_t start_test_unpack4, end_test_unpack4;
-  cudaEvent_t start_test_delaycalc, end_test_delaycalc;
-  dim3 FringeSetblocks;
+  dim3 FringeSetblocks, unpackBlocks;
   double *gpuDelays, **delays, *antfileoffsets;
   double lo, sampletime;
-  // TODO
   float *rotationPhaseInfo, *fractionalSampleDelays;
 
-  dtime_unpack = (float *)malloc(arguments.nloops * sizeof(float));
-  dtime_unpack2 = (float *)malloc(arguments.nloops * sizeof(float));
-  dtime_unpack3 = (float *)malloc(arguments.nloops * sizeof(float));
-  dtime_unpack4 = (float *)malloc(arguments.nloops * sizeof(float));
-  dtime_delaycalc = (float *)malloc(arguments.nloops * sizeof(float));
-  int i, j, unpackBlocks;
+  int i, j, unpackThreads, executionsperthread = 1, numkernelexecutions;
+  int delayPhaseThreads;
 
+  numkernelexecutions = fftsamples;
+  if (numkernelexecutions <= arguments.nthreads) {
+    unpackThreads = numkernelexecutions;
+    executionsperthread = 1;
+  } else {
+    unpackThreads = arguments.nthreads;
+    executionsperthread = numkernelexecutions / arguments.nthreads;
+    if (numkernelexecutions % arguments.nthreads) {
+      printf("Error: number of threads not divisible into number of kernel executions!\n");
+      exit(0);
+    }
+  }
+
+  unpackBlocks = dim3(executionsperthread, numffts);
   FringeSetblocks = dim3(8, arguments.nantennas);
+
+  numkernelexecutions = numffts;
+  if (numkernelexecutions <= arguments.nthreads) {
+    delayPhaseThreads = numkernelexecutions;
+    executionsperthread = 1;
+  } else {
+    delayPhaseThreads = arguments.nthreads;
+    executionsperthread = numkernelexecutions / arguments.nthreads;
+    if (numkernelexecutions % arguments.nthreads) {
+      printf("Error: number of threads not divisible into number of kernel executions!\n");
+      exit(0);
+    }
+  }
+  dim3 delayPhaseBlocks = dim3(executionsperthread, arguments.nantennas);
   
   // Allocate the memory.
-  int packedBytes = arguments.nsamples * 2 * npolarisations / 8;
+  int max_delay_samples = 32768;
+  int packedBytes = (arguments.nsamples + max_delay_samples) * 2 * npolarisations / 8;
   int packedBytes8 = packedBytes * 4;
   packedData = new int8_t*[arguments.nantennas];
   packedData8 = new int8_t*[arguments.nantennas];
@@ -240,21 +527,11 @@ int main(int argc, char *argv[]) {
   sampletime = (arguments.complexdata == 1) ? (1.0 / arguments.bandwidth) : (1.0 / (2 * arguments.bandwidth));
   
   
-  unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
-  printf("Each unpacking test will run with %d threads, %d blocks\n", arguments.nthreads, unpackBlocks);
+  //unpackBlocks = arguments.nsamples / npolarisations / arguments.nthreads;
+  printf("Each unpacking test will run with %d threads, %d x %d blocks\n", unpackThreads, unpackBlocks.x, unpackBlocks.y);
   printf("  nsamples = %d\n", arguments.nsamples);
   printf("  nantennas = %d\n", arguments.nantennas);
   
-  cudaEventCreate(&start_test_unpack);
-  cudaEventCreate(&end_test_unpack);
-  cudaEventCreate(&start_test_unpack2);
-  cudaEventCreate(&end_test_unpack2);
-  cudaEventCreate(&start_test_unpack3);
-  cudaEventCreate(&end_test_unpack3);
-  cudaEventCreate(&start_test_unpack4);
-  cudaEventCreate(&end_test_unpack4);
-  cudaEventCreate(&start_test_delaycalc);
-  cudaEventCreate(&end_test_delaycalc);
   // Generate some random data.
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
@@ -263,111 +540,93 @@ int main(int argc, char *argv[]) {
     curandGenerateUniform(gen, (float*)packedData8[i], packedBytes8 * (sizeof(int8_t) / sizeof(float)));
   }
   curandDestroyGenerator(gen);
+  cudaGetLastError();
 
+  timerAdd(&timers, "calculateDelaysAndPhases");
+  timerAdd(&timers, "old_unpack2bit_2chan");
+  timerAdd(&timers, "unpack2bit_2chan");
+  timerAdd(&timers, "unpack2bit_2chan_fast");
+  timerAdd(&timers, "unpack8bitcomplex_2chan");
   for (i = 0; i < arguments.nloops; i++) {
     if (arguments.verbose) {
       printf("\nLOOP %d\n", i);
     }
 
     // Run the delay calculator.
-    preLaunchCheck();
     if (arguments.verbose) {
       printf("  RUNNING DELAY KERNEL...");
-      printf("   blocks = x: %d y: %d\n", FringeSetblocks.x, FringeSetblocks.y);
-      printf("   threads = %d\n", numffts / 8);
+      printf("   blocks = x: %d y: %d\n", delayPhaseBlocks.x, delayPhaseBlocks.y);
+      printf("   threads = %d\n", delayPhaseThreads);
     }
-    cudaEventRecord(start_test_delaycalc, 0);
-    calculateDelaysAndPhases<<<FringeSetblocks, numffts/8>>>(gpuDelays, lo, sampletime,
-							     fftchannels,
-							     arguments.nchannels,
-							     rotationPhaseInfo,
-							     sampleShift,
-							     fractionalSampleDelays);
-    cudaEventRecord(end_test_delaycalc, 0);
-    cudaEventSynchronize(end_test_delaycalc);
-    cudaEventElapsedTime(&(dtime_delaycalc[i]), start_test_delaycalc, end_test_delaycalc);
+    timerStart(&timers, "calculateDelaysAndPhases");
+    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads>>>(gpuDelays, lo, sampletime,
+								      fftsamples,
+								      arguments.nchannels,
+								      samplegranularity,
+								      rotationPhaseInfo,
+								      sampleShift,
+								      fractionalSampleDelays);
+    gpuErrchk(cudaPeekAtLastError());
+    timerResult = timerEnd(&timers);
     if (arguments.verbose) {
-      printf("  done in %8.3f ms.\n", dtime_delaycalc[i]);
+      printf("  done in %8.3f ms.\n", timerResult);
     }
-    postLaunchCheck();
     
     // Now do the unpacking.
-    preLaunchCheck();
     if (arguments.verbose) {
       printf("  RUNNING KERNEL... ");
     }
-    cudaEventRecord(start_test_unpack, 0);
+    timerStart(&timers, "old_unpack2bit_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
-      old_unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(unpackedData, packedData[j], j);
+      old_unpack2bit_2chan<<<unpackBlocks, unpackThreads>>>(unpackedData, packedData[j], j);
+      gpuErrchk(cudaPeekAtLastError());
     }
-    cudaEventRecord(end_test_unpack, 0);
-    cudaEventSynchronize(end_test_unpack);
-    cudaEventElapsedTime(&(dtime_unpack[i]), start_test_unpack, end_test_unpack);
+    timerResult = timerEnd(&timers);
     if (arguments.verbose) {
-      printf("  done in %8.3f ms.\n", dtime_unpack[i]);
+      printf("  done in %8.3f ms.\n", timerResult);
     }
-    postLaunchCheck();
 
-    preLaunchCheck();
     if (arguments.verbose) {
       printf("  RUNNING KERNEL 2... ");
     }
-    cudaEventRecord(start_test_unpack2, 0);
+    timerStart(&timers, "unpack2bit_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
-      unpack2bit_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+      unpack2bit_2chan<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j]);
+      gpuErrchk(cudaPeekAtLastError());
     }
-    cudaEventRecord(end_test_unpack2, 0);
-    cudaEventSynchronize(end_test_unpack2);
-    cudaEventElapsedTime(&(dtime_unpack2[i]), start_test_unpack2, end_test_unpack2);
+    timerResult = timerEnd(&timers);
     if (arguments.verbose) {
-      printf("  done in %8.3f ms.\n", dtime_unpack2[i]);
+      printf("  done in %8.3f ms.\n", timerResult);
     }
-    postLaunchCheck();
 
-    preLaunchCheck();
     if (arguments.verbose) {
       printf("  RUNNING KERNEL 3... ");
     }
-    cudaEventRecord(start_test_unpack3, 0);
+    init_2bitLevels();
+    timerStart(&timers, "unpack2bit_2chan_fast");
     for (j = 0; j < arguments.nantennas; j++) {
-      init_2bitLevels();
-      unpack2bit_2chan_fast<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], sampleShift);
+      unpack2bit_2chan_fast<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData[j], &(sampleShift[numffts*j]), fftsamples);
+      gpuErrchk(cudaPeekAtLastError());
     }
-    cudaEventRecord(end_test_unpack3, 0);
-    cudaEventSynchronize(end_test_unpack3);
-    cudaEventElapsedTime(&(dtime_unpack3[i]), start_test_unpack3, end_test_unpack3);
+    timerResult = timerEnd(&timers);
     if (arguments.verbose) {
-      printf("  done in %8.3f ms.\n", dtime_unpack3[i]);
+      printf("  done in %8.3f ms.\n", timerResult);
     }
-    postLaunchCheck();
 
-    preLaunchCheck();
     if (arguments.verbose) {
       printf("  RUNNING KERNEL 4... ");
     }
-    cudaEventRecord(start_test_unpack4, 0);
+    init_2bitLevels();
+    timerStart(&timers, "unpack8bitcomplex_2chan");
     for (j = 0; j < arguments.nantennas; j++) {
-      init_2bitLevels();
-      unpack8bitcomplex_2chan<<<unpackBlocks, arguments.nthreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j]);
+      unpack8bitcomplex_2chan<<<unpackBlocks, unpackThreads>>>(&unpackedData2[2*j*arguments.nsamples], packedData8[j], &(sampleShift[numffts*j]), fftsamples);
+      gpuErrchk(cudaPeekAtLastError());
     }
-    cudaEventRecord(end_test_unpack4, 0);
-    cudaEventSynchronize(end_test_unpack4);
-    cudaEventElapsedTime(&(dtime_unpack4[i]), start_test_unpack4, end_test_unpack4);
+    timerResult = timerEnd(&timers);
     if (arguments.verbose) {
-      printf("  done in %8.3f ms.\n", dtime_unpack4[i]);
+      printf("  done in %8.3f ms.\n", timerResult);
     }
-    postLaunchCheck();
   }
-  (void)time_stats(dtime_unpack, arguments.nloops, &averagetime_unpack,
-		   &mintime_unpack, &maxtime_unpack);
-  (void)time_stats(dtime_unpack2, arguments.nloops, &averagetime_unpack2,
-		   &mintime_unpack2, &maxtime_unpack2);
-  (void)time_stats(dtime_unpack3, arguments.nloops, &averagetime_unpack3,
-       &mintime_unpack3, &maxtime_unpack3);
-  (void)time_stats(dtime_unpack4, arguments.nloops, &averagetime_unpack4,
-       &mintime_unpack4, &maxtime_unpack4);
-  (void)time_stats(dtime_delaycalc, arguments.nloops, &averagetime_delaycalc,
-       &mintime_delaycalc, &maxtime_delaycalc);
   implied_time = (float)arguments.nsamples;
   if (arguments.complexdata) {
     // Bandwidth is the same as the sampling rate.
@@ -377,62 +636,28 @@ int main(int argc, char *argv[]) {
   } else {
     implied_time /= 2 * (float)arguments.bandwidth;
   }
-  printf("\n==== ROUTINE: calculateDelaysAndPhases ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
-	 averagetime_delaycalc, mintime_delaycalc, maxtime_delaycalc, implied_time,
-	 ((implied_time * 1e3) / averagetime_delaycalc));
-  printf("\n==== ROUTINE: old_unpack2bit_2chan ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
-	 averagetime_unpack, mintime_unpack, maxtime_unpack, implied_time,
-	 ((implied_time * 1e3) / averagetime_unpack));
-  printf("\n==== ROUTINE: unpack2bit_2chan ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
-	 averagetime_unpack2, mintime_unpack2, maxtime_unpack2, implied_time,
-	 ((implied_time * 1e3) / averagetime_unpack2));
-  printf("\n==== ROUTINE: unpack2bit_2chan_fast ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
-   averagetime_unpack3, mintime_unpack3, maxtime_unpack3, implied_time,
-   ((implied_time * 1e3) / averagetime_unpack3));
-  printf("\n==== ROUTINE: unpack28itcomplex_2chan ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n", (arguments.nloops - 1),
-   averagetime_unpack4, mintime_unpack4, maxtime_unpack4, implied_time,
-   ((implied_time * 1e3) / averagetime_unpack4));
-  
-  
-  // Clean up.
-  cudaEventDestroy(start_test_unpack);
-  cudaEventDestroy(end_test_unpack);
-  cudaEventDestroy(start_test_unpack2);
-  cudaEventDestroy(end_test_unpack2);
-  cudaEventDestroy(start_test_unpack3);
-  cudaEventDestroy(end_test_unpack3);
-  cudaEventDestroy(start_test_unpack4);
-  cudaEventDestroy(end_test_unpack4);
-  cudaEventDestroy(start_test_delaycalc);
-  cudaEventDestroy(end_test_delaycalc);
+  timerPrintStatistics(&timers, "calculateDelaysAndPhases", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "old_unpack2bit_2chan", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack2bit_2chan", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack2bit_2chan_fast", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "unpack8bitcomplex_2chan", implied_time, jsonvis);
 
-
+  // Free some memory.
+  for (i = 0; i < arguments.nantennas; i++) {
+    gpuErrchk(cudaFree(packedData[i]));
+    gpuErrchk(cudaFree(packedData8[i]));
+    gpuErrchk(cudaFree(unpacked[i]));
+  }
+  gpuErrchk(cudaFree(unpackedData));
+  
   /*
    * This benchmarks the performance of the fringe rotator kernel.
    */
   cuComplex *unpackedFR;
   /* A suitable array has already been defined and populated. */
   unpackedFR = unpackedData2;
-  float *dtime_fringerotate=NULL, averagetime_fringerotate = 0.0;
-  float mintime_fringerotate = 0.0, maxtime_fringerotate = 0.0;
-  float *dtime_fringerotate2=NULL, averagetime_fringerotate2 = 0.0;
-  float mintime_fringerotate2 = 0.0, maxtime_fringerotate2 = 0.0;
   float *rotVec;
-  cudaEvent_t start_test_fringerotate, end_test_fringerotate;
-  cudaEvent_t start_test_fringerotate2, end_test_fringerotate2;
   dim3 fringeBlocks;
-  dtime_fringerotate = (float *)malloc(arguments.nloops * sizeof(float));
-  dtime_fringerotate2 = (float *)malloc(arguments.nloops * sizeof(float));
   
   // Work out the block and thread numbers.
   fringeBlocks = dim3((arguments.nchannels / arguments.nthreads), numffts, arguments.nantennas);
@@ -446,31 +671,27 @@ int main(int argc, char *argv[]) {
 
   /* Allocate memory for the rotation vector. */
   gpuErrchk(cudaMalloc(&rotVec, arguments.nantennas * numffts * 2 * sizeof(float)));
+
   /* Fill it with random data. */
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
   curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
   curandGenerateUniform(gen, rotVec, arguments.nantennas * numffts * 2);
   curandDestroyGenerator(gen);
+  cudaGetLastError();
 
+  timerAdd(&timers, "FringeRotate2");
+  timerAdd(&timers, "FringeRotate");
   for (i = 0; i < arguments.nloops; i++) {
     
-    preLaunchCheck();
-    cudaEventRecord(start_test_fringerotate2, 0);
-
-    //setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    timerStart(&timers, "FringeRotate2");
     FringeRotate2<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
     
-    cudaEventRecord(end_test_fringerotate2, 0);
-    cudaEventSynchronize(end_test_fringerotate2);
-    cudaEventElapsedTime(&(dtime_fringerotate2[i]), start_test_fringerotate2,
-			 end_test_fringerotate2);
-    postLaunchCheck();
-
-    preLaunchCheck();
-    cudaEventRecord(start_test_fringerotate, 0);
-
-    //setFringeRotation<<<FringeSetblocks, numffts/8>>>(rotVec);
+    timerStart(&timers, "FringeRotate");
     FringeRotate<<<fringeBlocks, arguments.nthreads>>>(unpackedFR, rotVec);
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
     
     cudaEventRecord(end_test_fringerotate, 0);
     cudaEventSynchronize(end_test_fringerotate);
@@ -478,37 +699,13 @@ int main(int argc, char *argv[]) {
 			 end_test_fringerotate);
     postLaunchCheck();
   }
-  // Do some statistics.
-  (void)time_stats(dtime_fringerotate, arguments.nloops, &averagetime_fringerotate,
-		   &mintime_fringerotate, &maxtime_fringerotate);
-  (void)time_stats(dtime_fringerotate2, arguments.nloops, &averagetime_fringerotate2,
-		   &mintime_fringerotate2, &maxtime_fringerotate2);
-  printf("\n==== ROUTINES: FringeRotate ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
-	 (arguments.nloops - 1),
-	 averagetime_fringerotate, mintime_fringerotate, maxtime_fringerotate, implied_time,
-	 ((implied_time * 1e3) / averagetime_fringerotate));
-
-  printf("\n==== ROUTINES: FringeRotate2 ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
-	 (arguments.nloops - 1),
-	 averagetime_fringerotate2, mintime_fringerotate2, maxtime_fringerotate2, implied_time,
-	 ((implied_time * 1e3) / averagetime_fringerotate2));
-  cudaEventDestroy(start_test_fringerotate);
-  cudaEventDestroy(end_test_fringerotate);
-  cudaEventDestroy(start_test_fringerotate2);
-  cudaEventDestroy(end_test_fringerotate2);
-
+  timerPrintStatistics(&timers, "FringeRotate", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "FringeRotate2", implied_time, jsonvis);
 
   /*
    * This benchmarks the performance of the FFT.
    */
   cufftHandle plan;
-  cudaEvent_t start_test_fft, end_test_fft;
-  float *dtime_fft=NULL, averagetime_fft = 0.0;
-  float mintime_fft = 0.0, maxtime_fft = 0.0;
   cuComplex *channelisedData;
   int nbaseline = arguments.nantennas * (arguments.nantennas - 1) / 2;
   int parallelAccum = (int)ceil(arguments.nthreads / arguments.nchannels + 1);
@@ -518,10 +715,6 @@ int main(int argc, char *argv[]) {
     printf("Error: can not determine block size for the cross correlator!\n");
     exit(0);
   }
-  dtime_fft = (float *)malloc(arguments.nloops * sizeof(float));
-
-  cudaEventCreate(&start_test_fft);
-  cudaEventCreate(&end_test_fft);
 
   printf("\n\nEach fringe rotation test will run:\n");
   printf("  parallelAccum = %d\n", parallelAccum);
@@ -530,57 +723,41 @@ int main(int argc, char *argv[]) {
   /* Allocate the necessary arrays. */
   gpuErrchk(cudaMalloc(&channelisedData, arguments.nantennas * npolarisations *
 		       arguments.nsamples * sizeof(cuComplex)));
-  if (rc = cufftPlan1d(&plan, fftchannels, CUFFT_C2C,
-		       2 * arguments.nantennas * numffts) != CUFFT_SUCCESS) {
+  rc = cufftPlan1d(&plan, fftsamples, CUFFT_C2C, 2 * arguments.nantennas * numffts);
+  if (rc != CUFFT_SUCCESS) {
     printf("FFT planning failed! %d\n", rc);
     exit(0);
   }
+
+  timerAdd(&timers, "cufftExecC2C");
   for (i = 0; i < arguments.nloops; i++) {
 
-    preLaunchCheck();
-    cudaEventRecord(start_test_fft, 0);
+    timerStart(&timers, "cufftExecC2C");
     if (cufftExecC2C(plan, unpackedFR, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
       printf("FFT execution failed!\n");
       exit(0);
     }
-    
-    cudaEventRecord(end_test_fft, 0);
-    cudaEventSynchronize(end_test_fft);
-    cudaEventElapsedTime(&(dtime_fft[i]), start_test_fft,
-			 end_test_fft);
-    postLaunchCheck();
+    timerEnd(&timers);
 
   }
   cufftDestroy(plan);
-    
-  // Do some statistics.
-  (void)time_stats(dtime_fft, arguments.nloops, &averagetime_fft,
-		   &mintime_fft, &maxtime_fft);
-  printf("\n==== ROUTINES: cufftExecC2C ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
-	 (arguments.nloops - 1),
-	 averagetime_fft, mintime_fft, maxtime_fft, implied_time,
-	 ((implied_time * 1e3) / averagetime_fft));
+  timerPrintStatistics(&timers, "cufftExecC2C", implied_time, jsonvis);
 
-  cudaEventDestroy(start_test_fft);
-  cudaEventDestroy(end_test_fft);
+  // Free some memory.
+  gpuErrchk(cudaFree(rotVec));
+  gpuErrchk(cudaFree(unpackedData2));
+  gpuErrchk(cudaFree(sampleShift));
+  gpuErrchk(cudaFree(rotationPhaseInfo));
+  gpuErrchk(cudaFree(fractionalSampleDelays));
+  gpuErrchk(cudaFree(gpuDelays));
   
   /*
    * This benchmarks the performance of the cross-correlator and accumulator
    * combination.
    */
-  cudaEvent_t start_test_crosscorr, end_test_crosscorr;
-  cudaEvent_t start_test_accum, end_test_accum;
-  float *dtime_crosscorr=NULL, averagetime_crosscorr = 0.0;
-  float mintime_crosscorr = 0.0, maxtime_crosscorr = 0.0;
-  float *dtime_accum=NULL, averagetime_accum = 0.0;
-  float mintime_accum = 0.0, maxtime_accum = 0.0;
-  int corrThreads, blockchan, nchunk;
+  int corrThreads, blockchan, nchunk, ccblock_width = 128;
   cuComplex *baselineData;
-  dim3 corrBlocks, accumBlocks;
-  dtime_crosscorr = (float *)malloc(arguments.nloops * sizeof(float));
-  dtime_accum = (float *)malloc(arguments.nloops * sizeof(float));
+  dim3 corrBlocks, accumBlocks, ccblock, ccblock2;
   
   gpuErrchk(cudaMalloc(&baselineData, nbaseline * 4 * arguments.nchannels *
 		       parallelAccum * sizeof(cuComplex)));
@@ -594,6 +771,10 @@ int main(int argc, char *argv[]) {
   }
   corrBlocks = dim3(blockchan, parallelAccum);
   accumBlocks = dim3(blockchan, 4, nbaseline);
+  ccblock = dim3((1 + (arguments.nchannels - 1) / ccblock_width),
+		 arguments.nantennas - 1, arguments.nantennas - 1);
+  ccblock2 = dim3((1 + (arguments.nchannels - 1) / ccblock_width),
+		  (2 * arguments.nantennas -1), (2 * arguments.nantennas - 1));
   nchunk = numffts / parallelAccum;
 
   printf("\n\nEach cross correlation test will run:\n");
@@ -604,55 +785,58 @@ int main(int argc, char *argv[]) {
   printf("  accumBlocks = x: %d , y: %d, z: %d\n", accumBlocks.x, accumBlocks.y, accumBlocks.z);
   printf("  nchunk = %d\n", nchunk);
 
-  cudaEventCreate(&start_test_crosscorr);
-  cudaEventCreate(&end_test_crosscorr);
-  cudaEventCreate(&start_test_accum);
-  cudaEventCreate(&end_test_accum);
+  printf("  ccblock_width = %d\n", ccblock_width);
+  printf("  ccblock = x: %d , y: %d, z: %d\n", ccblock.x, ccblock.y, ccblock.z);
+  printf("  ccblock2 = x: %d , y: %d, z: %d\n", ccblock2.x, ccblock2.y, ccblock2.z);
+
+  timerAdd(&timers, "CrossCorr");
+  timerAdd(&timers, "finaliseAccum");
+  timerAdd(&timers, "CrossCorrAccumHoriz");
+  timerAdd(&timers, "CCAH2");
+  timerAdd(&timers, "CCAH3");
+
   for (i = 0; i < arguments.nloops; i++) {
 
-    preLaunchCheck();
-    cudaEventRecord(start_test_crosscorr, 0);
+    timerStart(&timers, "CrossCorr");
     CrossCorr<<<corrBlocks, corrThreads>>>(channelisedData, baselineData,
 					   arguments.nantennas, nchunk);
-    cudaEventRecord(end_test_crosscorr, 0);
-    cudaEventSynchronize(end_test_crosscorr);
-    cudaEventElapsedTime(&(dtime_crosscorr[i]), start_test_crosscorr,
-			 end_test_crosscorr);
-    postLaunchCheck();
-
-    preLaunchCheck();
-    cudaEventRecord(start_test_accum, 0);
-    finaliseAccum<<<accumBlocks, corrThreads>>>(baselineData, parallelAccum, nchunk);
-    cudaEventRecord(end_test_accum, 0);
-    cudaEventSynchronize(end_test_accum);
-    cudaEventElapsedTime(&(dtime_accum[i]), start_test_accum,
-			 end_test_accum);
-    postLaunchCheck();
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
     
-  }
-  // Do some statistics.
-  (void)time_stats(dtime_crosscorr, arguments.nloops, &averagetime_crosscorr,
-		   &mintime_crosscorr, &maxtime_crosscorr);
-  printf("\n==== ROUTINES: CrossCorr ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
-	 (arguments.nloops - 1),
-	 averagetime_crosscorr, mintime_crosscorr, maxtime_crosscorr, implied_time,
-	 ((implied_time * 1e3) / averagetime_crosscorr));
-  (void)time_stats(dtime_accum, arguments.nloops, &averagetime_accum,
-		   &mintime_accum, &maxtime_accum);
-  printf("\n==== ROUTINES: finaliseAccum ====\n");
-  printf("Iterations | Average time |  Min time   |  Max time   | Data time  | Speed up  |\n");
-  printf("%5d      | %8.3f ms  | %8.3f ms | %8.3f ms | %8.3f s | %8.3f  |\n",
-	 (arguments.nloops - 1),
-	 averagetime_accum, mintime_accum, maxtime_accum, implied_time,
-	 ((implied_time * 1e3) / averagetime_accum));
+    timerStart(&timers, "finaliseAccum");
+    finaliseAccum<<<accumBlocks, corrThreads>>>(baselineData, parallelAccum, nchunk);
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
+    
+    timerStart(&timers, "CrossCorrAccumHoriz");
+    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
+						    arguments.nantennas, numffts,
+						    arguments.nchannels, fftsamples);
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
+    
+    timerStart(&timers, "CCAH2");
+    CCAH2<<<ccblock2, ccblock_width>>>(baselineData, channelisedData,
+				      arguments.nantennas, numffts,
+				      arguments.nchannels, fftsamples);
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
 
+    timerStart(&timers, "CCAH3");
+    CCAH2<<<ccblock, ccblock_width>>>(baselineData, channelisedData,
+				      arguments.nantennas, numffts,
+				      arguments.nchannels, fftsamples);
+    gpuErrchk(cudaPeekAtLastError());
+    timerEnd(&timers);
+  }
+
+  timerPrintStatistics(&timers, "CrossCorr", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "finaliseAccum", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "CrossCorrAccumHoriz", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "CCAH2", implied_time, jsonvis);
+  timerPrintStatistics(&timers, "CCAH3", implied_time, jsonvis);
   
-  cudaEventDestroy(start_test_crosscorr);
-  cudaEventDestroy(end_test_crosscorr);
-  cudaEventDestroy(start_test_accum);
-  cudaEventDestroy(end_test_accum);
+  closeJson(jsonvis);
 }
 
 

@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 
   // Checkpoint for timing
   auto starttime = std::chrono::high_resolution_clock::now();
-  std::time_t time_now_t = std::chrono::system_clock::to_time_t(starttime);
+  std::time_t time_now_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   string starttimestring = std::ctime(&time_now_t);
   starttimestring.pop_back();
   
@@ -101,8 +101,9 @@ int main(int argc, char *argv[])
 
   // Calculate the elapsed time
   auto diff = std::chrono::high_resolution_clock::now() - starttime;
-  auto t1 = std::chrono::duration_cast<std::chrono::nanoseconds>(diff);
+  auto t1 = std::chrono::duration_cast<std::chrono::milliseconds>(diff);
 
+  std::cout << "Run time was " << t1.count() << " milliseconds" << endl;
   // Save the visibilities into a dumb ascii file
   fxkernel.saveVisibilities("vis.out", t1.count(), starttimestring);
 

@@ -20,6 +20,9 @@ PKG_CHECK_MODULES(IPP, ipp)
 AC_SUBST(IPP_CFLAGS)
 AC_SUBST(IPP_LIBS)
 
+# Use C++11
+AX_CXX_COMPILE_STDCXX([11], [noext], [mandatory])
+
 # These are the files to be generated.
 AC_CONFIG_FILES([Makefile src/Makefile])
 
@@ -29,12 +32,18 @@ AC_CONFIG_SRCDIR([src/testfxkernel.cpp])
 # Put configuration results in this file for us to #include in our program.
 AC_CONFIG_HEADERS([config.h])
 
+# Check for a C compiler.
+AC_PROG_CC
+
 # Check for a C++ compiler.
 AC_PROG_CXX
 
 # Check for libraries, headers, data etc here.
 CXXFLAGS="${CXXFLAGS} ${IPP_CFLAGS}"
 LIBS="${IPP_LIBS} $LIBS"
+
+# pthreads
+ACX_PTHREAD
 
 # Last line: actually generate all required output files.
 AC_OUTPUT

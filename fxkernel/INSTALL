@@ -1,3 +1,14 @@
+fxkernel Depends on IPP libraries which must be installed. If you have
+an existing DIFX installation and $PKG_CONFIG_PATH points to the
+directory containing ipp.pc, then this should be picked
+automatically. If you do not have ipp.pc installed, run "genipppc".
+
+genipppc defaults to look for IPP in /opt/intel or $IPPROOT. If it is in neithe rlocation, pass the "root" directory of the intel as an argument to genipppc.
+
+You will need to copy the generated ipp.pc file to a directory pointed to by $PKG_CONFIG_PATH (e.g. ~/lib/pkgconfig)
+
+Then run:
+
 autoreconf --install
 ./configure
 make
