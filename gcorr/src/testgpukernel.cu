@@ -84,11 +84,11 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 int kNumStreams = 2;
 
-void allocDataGPU(int8_t ***packedData, COMPLEX **unpackedData,
-		  COMPLEX **channelisedData, cuComplex **baselineData, 
-		  float **rotationPhaseInfo, float **fractionalSampleDelays, int **sampleShifts, 
-      double **gpuDelays, int numantenna, int subintsamples, int nbit, int nPol, 
-      bool iscomplex, int nchan, int numffts, int parallelAccum, int num_streams, int num_packed_bytes) {
+void allocDataGPU(int8_t ****packedData, COMPLEX ***unpackedData,
+		  COMPLEX ***channelisedData, cuComplex ***baselineData, 
+		  float ***rotationPhaseInfo, float ***fractionalSampleDelays, int ***sampleShifts, 
+		  double ***gpuDelays, int numantenna, int subintsamples, int nbit, int nPol, 
+		  bool iscomplex, int nchan, int numffts, int parallelAccum, int num_streams, int num_packed_bytes) {
 
   unsigned long long GPUalloc = 0;
 
@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
   int8_t ***packedData;
   float **rotationPhaseInfo;
   float **fractionalSampleDelays;
-  int **sampleShifts;
+  int32_t **sampleShifts;
   double **gpuDelays;
   COMPLEX **unpackedData, **channelisedData;
   cuComplex **baselineData;
@@ -486,7 +486,7 @@ int main(int argc, char *argv[])
 
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
 
-    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads,streams[stream]>>>(gpuDelays[stream], lo, sampletime, fftsamples, numchannels, 
+    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads,0,streams[stream]>>>(gpuDelays[stream], lo, sampletime, fftsamples, numchannels, 
                                                                                       samplegranularity, rotationPhaseInfo[stream], 
                                                                                       sampleShifts[stream], fractionalSampleDelays[stream]);
     CudaCheckError();
@@ -495,9 +495,9 @@ int main(int argc, char *argv[])
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
       if (nbit==2 && !iscomplex) {
-	      unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
+	unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
       } else if (nbit==8 && iscomplex) {
-	      unpack8bitcomplex_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[numffts*i]), fftsamples);
+	      unpack8bitcomplex_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
       }
       CudaCheckError();
     }
@@ -517,19 +517,19 @@ int main(int argc, char *argv[])
     }
 #endif
     // Fractional Delay Correction
-    FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData, fractionalSampleDelays, numchannels, fftsamples, numffts, subintsamples);
+    FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData[stream], fractionalSampleDelays[stream], numchannels, fftsamples, numffts, subintsamples);
     CudaCheckError();
     
     // Cross correlate
 
-    gpuErrchk(cudaMemsetAsync(baselineData[stream], 0, nbaseline*4*numchannels*sizeof(cuComplex), stream[stream]));
+    gpuErrchk(cudaMemsetAsync(baselineData[stream], 0, nbaseline*4*numchannels*sizeof(cuComplex), streams[stream]));
 
 
     int ccblock_width = 128;
     //int nantxp = numantennas*2;
     int nantxp = numantennas;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-    CCAH3<<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftchannels);
+    CCAH3<<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftsamples);
   }
   
   float dtime;
