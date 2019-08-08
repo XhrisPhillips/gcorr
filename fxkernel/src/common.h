@@ -7,6 +7,8 @@
 #include <cstring>
 #include <stdint.h>
 
+#include "cuda_runtime_api.h"
+
 using std::vector;
 using std::string;
 using std::cout;

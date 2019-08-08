@@ -666,6 +666,9 @@ int main(int argc, char *argv[]) {
   printf("  nchannels = %d\n", arguments.nchannels);
   printf("  nffts = %d\n", numffts);
   
+  cudaEventCreate(&start_test_fringerotate);
+  cudaEventCreate(&end_test_fringerotate);
+
   /* Allocate memory for the rotation vector. */
   gpuErrchk(cudaMalloc(&rotVec, arguments.nantennas * numffts * 2 * sizeof(float)));
 
@@ -690,6 +693,11 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
     
+    cudaEventRecord(end_test_fringerotate, 0);
+    cudaEventSynchronize(end_test_fringerotate);
+    cudaEventElapsedTime(&(dtime_fringerotate[i]), start_test_fringerotate,
+			 end_test_fringerotate);
+    postLaunchCheck();
   }
   timerPrintStatistics(&timers, "FringeRotate", implied_time, jsonvis);
   timerPrintStatistics(&timers, "FringeRotate2", implied_time, jsonvis);
@@ -776,6 +784,7 @@ int main(int argc, char *argv[]) {
   printf("  corrBlocks = x: %d , y: %d, z: %d\n", corrBlocks.x, corrBlocks.y, corrBlocks.z);
   printf("  accumBlocks = x: %d , y: %d, z: %d\n", accumBlocks.x, accumBlocks.y, accumBlocks.z);
   printf("  nchunk = %d\n", nchunk);
+
   printf("  ccblock_width = %d\n", ccblock_width);
   printf("  ccblock = x: %d , y: %d, z: %d\n", ccblock.x, ccblock.y, ccblock.z);
   printf("  ccblock2 = x: %d , y: %d, z: %d\n", ccblock2.x, ccblock2.y, ccblock2.z);
@@ -785,6 +794,7 @@ int main(int argc, char *argv[]) {
   timerAdd(&timers, "CrossCorrAccumHoriz");
   timerAdd(&timers, "CCAH2");
   timerAdd(&timers, "CCAH3");
+
   for (i = 0; i < arguments.nloops; i++) {
 
     timerStart(&timers, "CrossCorr");
@@ -819,6 +829,7 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
   }
+
   timerPrintStatistics(&timers, "CrossCorr", implied_time, jsonvis);
   timerPrintStatistics(&timers, "finaliseAccum", implied_time, jsonvis);
   timerPrintStatistics(&timers, "CrossCorrAccumHoriz", implied_time, jsonvis);
@@ -826,7 +837,6 @@ int main(int argc, char *argv[]) {
   timerPrintStatistics(&timers, "CCAH3", implied_time, jsonvis);
   
   closeJson(jsonvis);
-  
 }
 
 

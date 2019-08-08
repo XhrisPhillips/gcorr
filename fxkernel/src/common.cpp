@@ -17,10 +17,10 @@ void allocDataHost(uint8_t ***data, int numantenna, int numchannels, int numffts
   cout << "Allocating " << subintbytes/1024/1024 << " MB per antenna per subint" << endl;
   cout << "          " << subintbytes * numantenna / 1024 / 1024 << " MB total" << endl;
 
-
   *data = new uint8_t*[numantenna];
-  for (i=0; i<numantenna; i++)
-    (*data)[i] = new uint8_t[subintbytes];
+  for (int a=0; a<numantenna; a++){
+    cudaHostAlloc((void**)&(*data)[a], subintbytes*sizeof(uint8_t), cudaHostAllocDefault);
+  }
 }
 
 int readdata(int bytestoread, vector<std::ifstream*> &antStream, uint8_t **inputdata) 

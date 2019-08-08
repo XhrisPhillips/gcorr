@@ -82,55 +82,64 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 /* The argp parser */
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
-
+int kNumStreams = 2;
 
 void allocDataGPU(int8_t ***packedData, COMPLEX **unpackedData,
 		  COMPLEX **channelisedData, cuComplex **baselineData, 
 		  float **rotationPhaseInfo, float **fractionalSampleDelays, int **sampleShifts, 
-                  double **gpuDelays, int numantenna, int subintsamples, int nbit, 
-                  int nPol, bool iscomplex, int nchan, int numffts, int parallelAccum)
-{
+      double **gpuDelays, int numantenna, int subintsamples, int nbit, int nPol, 
+      bool iscomplex, int nchan, int numffts, int parallelAccum, int num_streams, int num_packed_bytes) {
+
   unsigned long long GPUalloc = 0;
 
-  int packedBytes = (subintsamples+nchan*2)*nbit*nPol/8; // Allow a little extra for delay shift
-  *packedData = new int8_t*[numantenna];
-  
-  for (int i=0; i<numantenna; i++) {
-    gpuErrchk(cudaMalloc(&(*packedData)[i], packedBytes));
-    GPUalloc += packedBytes;
-  }
+  *packedData = new int8_t**[num_streams];
+  *unpackedData = new cuComplex*[num_streams];
+  *channelisedData = new cuComplex*[num_streams];
+  *baselineData = new cuComplex*[num_streams];
+  *rotationPhaseInfo = new float*[num_streams];
+  *fractionalSampleDelays = new float*[num_streams];
+  *sampleShifts = new int*[num_streams];
+  *gpuDelays = new double*[num_streams];
 
   // Unpacked data
-  gpuErrchk(cudaMalloc(unpackedData, numantenna*nPol*subintsamples*sizeof(COMPLEX)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(COMPLEX);
-  
-  // FFT output
-  gpuErrchk(cudaMalloc(channelisedData, numantenna*nPol*subintsamples*sizeof(COMPLEX)));
-  GPUalloc += numantenna*nPol*subintsamples*sizeof(COMPLEX);
-
-  // Baseline visibilities
-  int nbaseline = numantenna*(numantenna-1)/2;
-  if (!iscomplex) subintsamples /= 2;
   cout << "Alloc " << nchan*parallelAccum << " complex output values per baseline" << endl;
-  gpuErrchk(cudaMalloc(baselineData, nbaseline*4*nchan*parallelAccum*sizeof(cuComplex)));
-  GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
+  for (int s=0; s<num_streams; s++) {
+    (*packedData)[s] = new int8_t*[numantenna];
+    for (int i=0; i<numantenna; i++) {
+      gpuErrchk(cudaMalloc(&((*packedData)[s][i]), num_packed_bytes));
+      GPUalloc += num_packed_bytes;
+    }
 
-  // Fringe rotation vector (will contain starting phase and phase increment for every FFT of every antenna)
-  gpuErrchk(cudaMalloc(rotationPhaseInfo, numantenna*numffts*2*sizeof(float)));
-  GPUalloc += numantenna*numffts*2*sizeof(float);
+    gpuErrchk(cudaMalloc(&(*unpackedData)[s], numantenna*nPol*subintsamples*sizeof(cuComplex)));
+    GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
+  
+    // FFT output
+    gpuErrchk(cudaMalloc(&(*channelisedData)[s], numantenna*nPol*subintsamples*sizeof(cuComplex)));
+    GPUalloc += numantenna*nPol*subintsamples*sizeof(cuComplex);
 
-  // Fractional sample delay vector (will contain midpoint fractional sample delay [in units of radians per channel!] 
-  // for every FFT of every antenna)
-  gpuErrchk(cudaMalloc(fractionalSampleDelays, numantenna*numffts*sizeof(float)));
-  GPUalloc += numantenna*numffts*sizeof(float);
+    // Baseline visibilities
+    int nbaseline = numantenna*(numantenna-1)/2;
+    if (!iscomplex) subintsamples /= 2;
+    gpuErrchk(cudaMalloc(&(*baselineData)[s], nbaseline*4*nchan*parallelAccum*sizeof(cuComplex)));
+    GPUalloc += nbaseline*4*nchan*parallelAccum*sizeof(cuComplex);
 
-  // Sample shifts vector (will contain the integer sample shift relative to nominal FFT start for every FFT of every antenna)
-  gpuErrchk(cudaMalloc(sampleShifts, numantenna*numffts*sizeof(int)));
-  GPUalloc += numantenna*numffts*sizeof(int);
+    // Fringe rotation vector (will contain starting phase and phase increment for every FFT of every antenna)
+    gpuErrchk(cudaMalloc(&(*rotationPhaseInfo)[s], numantenna*numffts*2*sizeof(float)));
+    GPUalloc += numantenna*numffts*2*sizeof(float);
 
-  // Delay information vectors
-  gpuErrchk(cudaMalloc(gpuDelays, numantenna*4*sizeof(double)));
-  GPUalloc += numantenna*4*sizeof(double);
+    // Fractional sample delay vector (will contain midpoint fractional sample delay [in units of radians per channel!] 
+    // for every FFT of every antenna)
+    gpuErrchk(cudaMalloc(&(*fractionalSampleDelays)[s], numantenna*numffts*sizeof(float)));
+    GPUalloc += numantenna*numffts*sizeof(float);
+
+    // Sample shifts vector (will contain the integer sample shift relative to nominal FFT start for every FFT of every antenna)
+    gpuErrchk(cudaMalloc(&(*sampleShifts)[s], numantenna*numffts*sizeof(int)));
+    GPUalloc += numantenna*numffts*sizeof(int);
+
+    // Delay information vectors
+    gpuErrchk(cudaMalloc(&(*gpuDelays)[s], numantenna*4*sizeof(double)));
+    GPUalloc += numantenna*4*sizeof(double);
+  }
   
   cout << "Allocated " << GPUalloc/1e6 << " Mb on GPU" << endl;
 }
@@ -183,19 +192,19 @@ int main(int argc, char *argv[])
   vector<string> antennas, antFiles;
   vector<std::ifstream *> antStream;
 
-  int8_t **packedData;
-  float *rotationPhaseInfo;
-  float *fractionalSampleDelays;
-  int *sampleShifts;
-  double *gpuDelays;
-  COMPLEX *unpackedData, *channelisedData;
-  cuComplex *baselineData;
-  cufftHandle plan;
+  int8_t ***packedData;
+  float **rotationPhaseInfo;
+  float **fractionalSampleDelays;
+  int **sampleShifts;
+  double **gpuDelays;
+  COMPLEX **unpackedData, **channelisedData;
+  cuComplex **baselineData;
+  cufftHandle plan[kNumStreams];
   cudaEvent_t start_exec, stop_exec;
   
   // Read in the command line arguments.
   struct arguments arguments;
-  arguments.nloops = 1;
+  arguments.nloops = 10;
   arguments.output_binary = 0;
   arguments.gpu_select = -1;
   arguments.configfile[0] = 0;
@@ -230,6 +239,7 @@ int main(int argc, char *argv[])
 
   // load up the test input data and delays from the configfile
   parseConfig(configfile, nbit, nPol, iscomplex, numchannels, numantennas, lo, bandwidth, numffts, antennas, antFiles, &delays, &antfileoffsets);
+  nPol = 2;
 
   samplegranularity = 8 / (nbit * nPol);
   if (samplegranularity < 1)
@@ -384,13 +394,15 @@ int main(int argc, char *argv[])
   
   cout << "Allocate Memory" << endl;
   // Allocate space in the buffers for the data and the delays
+  printf("Allocating host data\n");
   allocDataHost(&inputdata, numantennas, numchannels, numffts, nbit, nPol, iscomplex, subintbytes);
 
   // Allocate space on the GPU
+  printf("Allocating GPU data\n");
   allocDataGPU(&packedData, &unpackedData, &channelisedData,
-	       &baselineData, &rotationPhaseInfo, &fractionalSampleDelays, &sampleShifts,
+	             &baselineData, &rotationPhaseInfo, &fractionalSampleDelays, &sampleShifts,
                &gpuDelays, numantennas, subintsamples,
-	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum);
+	             nbit, nPol, iscomplex, numchannels, numffts, parallelAccum, kNumStreams, subintbytes);
 
   for (int i=0; i<numantennas; i++)
   {
@@ -401,40 +413,40 @@ int main(int argc, char *argv[])
     }
   }
 
-#ifdef USEHALF
   // Configure CUFFT
-  if (cufftCreate(&plan) != CUFFT_SUCCESS) {
-    cout << "CUFFT error: Handle creation failed" << endl;
-    return(0);
-  }
+#ifdef USEHALF
+
   long long int n[1] = { fftsamples };
   size_t workSize[1] = { 0 };
-  if (cufftXtMakePlanMany(plan, 1, n, NULL, 0, 0, CUDA_C_16F, NULL, 0, 0, CUDA_C_16F, nPol*numantennas*numffts, workSize, CUDA_C_16F) != CUFFT_SUCCESS) {
-    cout << "CUFFT error: Plan creation failed" << endl;
-    return(0);
+  for (int s=0; s<kNumStreams; s++) {
+    if (cufftCreate(&plan[s]) != CUFFT_SUCCESS) {
+      cout << "CUFFT error: Handle creation failed" << endl;
+      return(0);
+    }
+    if (cufftXtMakePlanMany(&plan[s], 1, n, NULL, 0, 0, CUDA_C_16F, NULL, 0, 0, CUDA_C_16F, nPol*numantennas*numffts, workSize, CUDA_C_16F) != CUFFT_SUCCESS) {
+      cout << "CUFFT error: Plan creation failed" << endl;
+      return(0);
+    }
   }
 #else
-  if (cufftPlan1d(&plan, fftsamples, CUFFT_C2C, nPol*numantennas*numffts) != CUFFT_SUCCESS) {
-    cout << "CUFFT error: Plan creation failed" << endl;
-    return(0);
+  for (int s=0; s<kNumStreams; s++) {
+    if (cufftPlan1d(&plan[s], fftsamples, CUFFT_C2C, nPol*numantennas*numffts) != CUFFT_SUCCESS) {
+      cout << "CUFFT error: Plan creation failed" << endl;
+      return(0);
+    }
   }
 #endif
   
+  cout << "Reading data" << endl;
   status = readdata(subintbytes, antStream, inputdata);
   if (status) exit(1);
+  init_2bitLevels();
 
-  // Copy data to GPU
-  cout << "Copy data to GPU" << endl;
-  for (int i=0; i<numantennas; i++) {
-    gpuErrchk(cudaMemcpy(packedData[i], inputdata[i], subintbytes, cudaMemcpyHostToDevice)); 
-  }
-
-  // Copy delays to GPU
-  cout << "Copy delays to GPU" << endl;
-  for (int i=0; i<numantennas; i++) {
-    gpuErrchk(cudaMemcpy(&(gpuDelays[i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice));
-    gpuErrchk(cudaMemcpy(&(gpuDelays[i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice));
-  }
+  // Initialise CUDA streams
+  cout << "Initialising CUDA streams" << endl;
+  cudaStream_t streams[kNumStreams];
+  for (int s=0; s<kNumStreams; s++)
+    gpuErrchk(cudaStreamCreate(&streams[s]));
 
   // Check that the number of FFTs is a valid number
   if (numffts%8)
@@ -445,46 +457,61 @@ int main(int argc, char *argv[])
 
   // Record the start time
   cudaEventRecord(start_exec, 0);
+  cout << "Entering loop" << endl;
   for (int l=0; l<arguments.nloops; l++)
   {
+    int stream = l % kNumStreams;
+
+    // Copy data to GPU
+    // cout << "Copy data to GPU" << endl;
+    for (int i=0; i<numantennas; i++) {
+      gpuErrchk(cudaMemcpyAsync(packedData[stream][i], inputdata[i], subintbytes, cudaMemcpyHostToDevice, streams[stream])); 
+    }
+    
+    // Copy delays to GPU
+    // cout << "Copy delays to GPU" << endl;
+    for (int i=0; i<numantennas; i++) {
+      gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
+      gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
+    }
+
+    int previous_stream = (stream-1);
+    if (previous_stream < 0)
+      previous_stream += kNumStreams;
+    
+    // Wait for the previous stream to complete all of its compute
+    // In testing it was observed that overlapping compute kernels
+    // reduced performance
+    cudaStreamSynchronize(streams[previous_stream]);
+
     // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
-    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads>>>(gpuDelays, lo, sampletime, fftsamples, numchannels, 
-                                                                      samplegranularity, rotationPhaseInfo, 
-                                                                      sampleShifts, fractionalSampleDelays);
+
+    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads,streams[stream]>>>(gpuDelays[stream], lo, sampletime, fftsamples, numchannels, 
+                                                                                      samplegranularity, rotationPhaseInfo[stream], 
+                                                                                      sampleShifts[stream], fractionalSampleDelays[stream]);
     CudaCheckError();
 
     // Unpack the data
     //cout << "Unpack data" << endl;
     for (int i=0; i<numantennas; i++) {
       if (nbit==2 && !iscomplex) {
-#if 0
-	unpack2bit_2chan_fast<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]), fftsamples);
-#else
-	unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &rotationPhaseInfo[i*numffts*2], &(sampleShifts[numffts*i]), fftsamples);
-#endif
+	      unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
       } else if (nbit==8 && iscomplex) {
-#if 0
-	unpack8bitcomplex_2chan<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &(sampleShifts[numffts*i]), fftsamples);
-#else
-	unpack8bitcomplex_2chan_rotate<<<unpackBlocks,unpackThreads>>>(&unpackedData[2*i*subintsamples], packedData[i], &rotationPhaseInfo[i*numffts*2], &(sampleShifts[numffts*i]), fftsamples);
-#endif
+	      unpack8bitcomplex_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[numffts*i]), fftsamples);
       }
       CudaCheckError();
     }
-
-#if 0
-    FringeRotate<<<fringeBlocks,fringeThreads>>>(unpackedData, rotationPhaseInfo);
-    CudaCheckError();
-#endif
   
     // FFT
+
+    cufftSetStream(plan[stream], streams[stream]);
 #ifdef USEHALF
-    if (cufftXtExec(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
-      cout << "CUFFT error: ExecC2C Forward failed" << endl;
+    if (cufftXtExec(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
+      cout << "CUFFT error: XtExec Forward failed" << endl;
       return(0);
     }
 #else
-    if (cufftExecC2C(plan, unpackedData, channelisedData, CUFFT_FORWARD) != CUFFT_SUCCESS) {
+    if (cufftExecC2C(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
       cout << "CUFFT error: ExecC2C Forward failed" << endl;
       return(0);
     }
@@ -494,27 +521,15 @@ int main(int argc, char *argv[])
     CudaCheckError();
     
     // Cross correlate
-    //gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*parallelAccum*sizeof(cuComplex)));
-    gpuErrchk(cudaMemset(baselineData, 0, nbaseline*4*numchannels*sizeof(cuComplex)));
 
-#if 0
-    cout << "Cross correlate" << endl;
-    CrossCorr<<<corrBlocks,corrThreads>>>(channelisedData, baselineData, numantennas, nchunk);
-    CudaCheckError();
-    // cout << "Finalise" << endl;
-    finaliseAccum<<<accumBlocks,corrThreads>>>(baselineData, parallelAccum, nchunk);
-    CudaCheckError();
-#elif 0
-    int ccblock_width = 128;
-    dim3 ccblock(1+(numchannels-1)/ccblock_width, numantennas-1, numantennas-1);
-    CrossCorrAccumHoriz<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
-#else
+    gpuErrchk(cudaMemsetAsync(baselineData[stream], 0, nbaseline*4*numchannels*sizeof(cuComplex), stream[stream]));
+
+
     int ccblock_width = 128;
     //int nantxp = numantennas*2;
     int nantxp = numantennas;
     dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-    CCAH3<<<ccblock, ccblock_width>>>(baselineData, channelisedData, numantennas, numffts, numchannels, fftsamples);
-#endif
+    CCAH3<<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftchannels);
   }
   
   float dtime;
@@ -527,23 +542,11 @@ int main(int argc, char *argv[])
   float rate = (float)subintsamples * numantennas * (2./cfactor) * nPol * nbit *arguments.nloops /(dtime/1000.)/1e9;
   cout << "Processed " << subinttime*arguments.nloops << " sec of data (" << rate << " Gbps)" << endl;
 
-#if 0
-  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, parallelAccum*numchannels, bandwidth);
-#else
-  saveVisibilities("vis.out", baselineData, nbaseline, numchannels, numchannels, bandwidth);
-#endif
+  // Write out the first streams data, this will need to be thought about more carefully
+  saveVisibilities("vis.out", baselineData[0], nbaseline, numchannels, numchannels, bandwidth);
 
   cudaDeviceSynchronize();
   cudaDeviceReset();
 
-  // Calculate the elapsed time
-
-  // Free memory
-  //  for (i=0; i<numantennas; i++)
-  //{
-  //  delete(inputdata[i]);
-  //  delete(delays[i]);
-  //}
-  //delete(inputdata);
-  //delete(delays);
+ 
 }
