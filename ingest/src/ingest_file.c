@@ -25,6 +25,10 @@ int main(int argc, char *argv[])
   decode_reference_time(&conf); // Get the reference time ready
   initialize_hdu_write(&conf);  // Get the HDU ready
   register_dada_header(&conf);  // Setup header DADA
+
+  ingest_file(&conf);  // Read file and write data to ring buffer
+  
+  destroy_hdu_write(conf); // Destroy HDU
   
   return EXIT_SUCCESS;
 }

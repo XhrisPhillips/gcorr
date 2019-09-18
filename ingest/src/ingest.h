@@ -7,6 +7,7 @@ extern "C" {
 #include <dirent.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
   
 #include "vdifio.h"
   
@@ -29,35 +30,33 @@ extern "C" {
 
     dada_hdu_t *hdu;
     ipcbuf_t *data_block, *header_block;
-        
+    
     char source[MAX_STRLEN];
     char ra[MAX_STRLEN];
     char dec[MAX_STRLEN];
-
+    
     int affinity;
     int cpu;
     char dada_header_template[MAX_STRLEN];
-
+    
     uint64_t nframe_per_stream_rbuf;
-    uint64_t nframe_per_stream_tbuf;
-    uint64_t rbuf_block_size;
-    uint64_t tbuf_size;
-
+    
     char runtime_directory[MAX_STRLEN];
     
     uint64_t picoseconds0;
-
+    
     double bandwidth;
     double frequecy_resolution;
-
+    
     double mjd0;
     char utc0[MAX_STRLEN];
     
     uint64_t days_from_1970;
-
+    
     uint64_t seconds_from_epoch;
     uint64_t frame_in_period;
-    
+
+    uint64_t curbuf_size;
   }conf_t;
   
   void usage();
@@ -69,6 +68,7 @@ extern "C" {
   int initialize_hdu_write(conf_t *conf);
   int destroy_hdu_write(conf_t conf);
   int register_dada_header(conf_t *conf);
+  int ingest_file(conf_t *conf);
   
 #endif
 #ifdef __cplusplus

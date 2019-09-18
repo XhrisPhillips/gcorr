@@ -16,13 +16,12 @@ void usage()
 	  " -a The input file name with full directory name \n"
 	  " -b The output ring buffer key\n"
 	  " -c The center frequency of the data\n"
-	  " -d The reference informaton of the current file, EPOCH_SECOND_DATAFRAME\n"
+	  " -d The reference informaton of the current file, EPOCH_SECOND_FRAME\n"
 	  " -e The source information, NAME_RA_DEC\n"
 	  " -f The name of the DADA header template\n"
 	  " -g The number of data frames in each temp buffer of each stream\n"
 	  " -h Show help\n"
-	  " -i The number of data frames in each buffer block of each stream\n"
-	  " -j Runtime directory\n"
+	  " -i Runtime directory\n"
 	  );
 }
 
@@ -99,14 +98,6 @@ int parse_configuration(int argc, char *argv[], conf_t *conf)
       break;
       
     case 'i':
-      if(sscanf(optarg, "%"SCNu64"", &conf->nframe_per_stream_tbuf) != 1) {
-	fprintf(stderr, "INGEST_FILE_ERROR: Could not parse number of frames per stream for temp buffer from %s, which happens at \"%s\", line [%d], has to abort.\n", optarg, __FILE__, __LINE__);
-	usage();	      
-	exit(EXIT_FAILURE);
-      }
-      break;
-      
-    case 'j':
       if(sscanf(optarg, "%s", conf->runtime_directory) != 1) {
 	fprintf(stderr, "INGEST_FILE_ERROR: Could not parse directory from %s, which happens at \"%s\", line [%d], has to abort.\n", optarg, __FILE__, __LINE__);
 	usage();	      
@@ -186,6 +177,7 @@ int initialize_hdu_write(conf_t *conf)
   
   conf->data_block   = (ipcbuf_t *)(conf->hdu->data_block);
   conf->header_block = (ipcbuf_t *)(conf->hdu->header_block);
+  conf->curbuf_size = ipcbuf_get_bufsz(conf->data_block);
   
   return EXIT_SUCCESS;
 }
@@ -250,15 +242,14 @@ int register_dada_header(conf_t *conf)
   log_add(conf->log_file, "INFO", 1,  "PICOSECONDS to DADA header is %"PRIu64"", conf->picoseconds0);
     
   /* donot set header parameters anymore */
-  if(ipcbuf_mark_filled(conf->header_block, DADA_DEFAULT_HEADER_SIZE) < 0)
-    {
-      log_add(conf->log_file, "ERR", 1,  "Error header_fill, which happens at \"%s\", line [%d], has to abort", __FILE__, __LINE__);
-      fprintf(stderr, "INGEST_FILE_ERROR: Error header_fill, which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
-
-      destroy_hdu_write(*conf);
-      log_close(conf->log_file);
-      exit(EXIT_FAILURE);
-    }
+  if(ipcbuf_mark_filled(conf->header_block, DADA_DEFAULT_HEADER_SIZE) < 0){
+    log_add(conf->log_file, "ERR", 1,  "Error header_fill, which happens at \"%s\", line [%d], has to abort", __FILE__, __LINE__);
+    fprintf(stderr, "INGEST_FILE_ERROR: Error header_fill, which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
+    
+    destroy_hdu_write(*conf);
+    log_close(conf->log_file);
+    exit(EXIT_FAILURE);
+  }
 
   return EXIT_SUCCESS;
 }
@@ -269,6 +260,99 @@ int destroy_hdu_write(conf_t conf)
     dada_hdu_unlock_write(conf.hdu);
     dada_hdu_destroy(conf.hdu); // it has disconnect
   }
+  
+  return EXIT_SUCCESS;
+}
+
+int ingest_file(conf_t *conf)
+{
+  uint64_t seconds_from_epoch;
+  uint64_t frame_in_period;
+  uint64_t frame_in_block;
+  
+  int thread;
+  FILE *fp = NULL;
+  char *buf = NULL;
+  size_t read_bytes = 0;
+  vdif_header hdr;
+  char *curbuf = NULL;
+  uint64_t curbuf_loc;
+  
+  fp = fopen(conf->file_name, "r");
+  if (fp == NULL){
+    log_add(conf->log_file, "ERR", 1,  "Error open_file, which happens at \"%s\", line [%d], has to abort", __FILE__, __LINE__);
+    fprintf(stderr, "INGEST_FILE_ERROR: Error open_file, which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
+    
+    destroy_hdu_write(*conf);
+    log_close(conf->log_file);
+    exit(EXIT_FAILURE);
+  }
+  curbuf = ipcbuf_get_next_write(conf->data_block); // Open a ring buffer block
+  if(curbuf == NULL) {
+    log_add(conf->log_file, "ERR", 1,  "open_buffer failed, which happens at \"%s\", line [%d], has to abort", __FILE__, __LINE__);
+    fprintf(stderr, "INGEST_FILE_ERROR: open_buffer failed, which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
+    
+    destroy_hdu_write(*conf);
+    log_close(conf->log_file);
+    exit(EXIT_FAILURE);
+  }
+  
+  size_t frame_bytes = VDIF_HEADER_BYTES + VDIF_PAYLOAD_BYTES;
+  buf = (char *)malloc(frame_bytes*sizeof(char));  
+  while(!feof(fp)){
+    read_bytes = fread(buf, frame_bytes, 1, fp);
+    
+    if(read_bytes != frame_bytes)  // No partial data frame
+      break;
+
+    // Figure out the location of the data frame;
+    // Accume that each frame from NiC has only one pol, one freq, the order of the data in the ring buffer will be TimeThread
+    // If thread 0 is for freq 0 pol 0, 1 is for freq0 pol 1, 2 is for freq 1 pol 0 and 3 is for freq 1 and pol 2, the order will be TFP
+    memcpy(&hdr, buf, VDIF_HEADER_BYTES);
+    thread = getVDIFThreadID(&hdr);
+    frame_in_period = getVDIFFrameNumber(&hdr);
+    seconds_from_epoch = getVDIFFrameEpochSecOffset(&hdr);
+    frame_in_block = (seconds_from_epoch - conf->seconds_from_epoch) * NFRAME_PER_STREAM_PER_PERIOD + frame_in_period - conf->frame_in_period;
+    
+    while(frame_in_block > conf->nframe_per_stream_rbuf){
+      frame_in_block -= conf->nframe_per_stream_rbuf;
+
+      conf->frame_in_period += conf->nframe_per_stream_rbuf;
+      if(conf->frame_in_period >= NFRAME_PER_STREAM_PER_PERIOD){
+	conf->seconds_from_epoch += PERIOD;
+	conf->frame_in_period -= NFRAME_PER_STREAM_PER_PERIOD;
+      }
+
+      if(ipcbuf_mark_filled(conf->data_block, conf->curbuf_size) < 0) {
+	log_add(conf->log_file, "ERR", 1,  "close_buffer failed, which happens at \"%s\", line [%d], has to abort", __FILE__, __LINE__);
+	fprintf(stderr, "INGEST_FILE_ERROR: close_buffer failed, which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
+	
+	free(buf);
+	destroy_hdu_write(*conf);
+	log_close(conf->log_file);
+	exit(EXIT_FAILURE);
+      }
+
+      curbuf = ipcbuf_get_next_write(conf->data_block); // Open a ring buffer block
+      if(curbuf == NULL) {
+	log_add(conf->log_file, "ERR", 1,  "open_buffer failed, which happens at \"%s\", line [%d], has to abort", __FILE__, __LINE__);
+	fprintf(stderr, "INGEST_FILE_ERROR: open_buffer failed, which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
+
+	free(buf);
+	destroy_hdu_write(*conf);
+	log_close(conf->log_file);
+	exit(EXIT_FAILURE);
+      }
+      
+      if(frame_in_block>=0){
+	curbuf_loc = (frame_in_block*NSTREAM + thread)*NBYTE_PER_DATA; 
+	memcpy(curbuf+curbuf_loc, buf+VDIF_HEADER_BYTES, VDIF_PAYLOAD_BYTES); // No VDIF header goes to ring buffer
+      }    
+    }
+  }
+
+  free(buf);
+  fclose(fp);
   
   return EXIT_SUCCESS;
 }
