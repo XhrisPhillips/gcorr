@@ -5,7 +5,7 @@
 #include <time.h>
 #include <unistd.h>
 
-// gcc settimer_test.c -o settimer_test -lrt
+// gcc setitimer_test.c -o settimer_test -lrt
 void missed_alarm(int signum) {
   /* we missed a timer signal, so won't be sending packets fast enough!!! */
   write(2, "Missed Alarm!\n", 14); /* can't use printf in a signal handler */
