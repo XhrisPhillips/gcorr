@@ -35,10 +35,10 @@ static char args_doc[] = "configuration_file";
 
 /* Our command line options */
 static struct argp_option options[] = {
-  { "loops", 'n', "NLOOPS", 0, "run the code N times in a loop" },
-  { "binary", 'b', 0, 0, "output binary instead of default text" },
-  { "gpu", 'g', "GPU", 0, "Select specific GPU"},
-  { 0 }
+				       { "loops", 'n', "NLOOPS", 0, "run the code N times in a loop" },
+				       { "binary", 'b', 0, 0, "output binary instead of default text" },
+				       { "gpu", 'g', "GPU", 0, "Select specific GPU"},
+				       { 0 }
 };
 
 struct arguments {
@@ -71,9 +71,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
   default:
     // Assume this is the config file.
     if (arg != NULL) {
-       if (strlen(arg) > 0) {
-       	  strncpy(arguments->configfile, arg, BUFSIZE);
-       }
+      if (strlen(arg) > 0) {
+	strncpy(arguments->configfile, arg, BUFSIZE);
+      }
     }
   }
   return 0;
@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
   uint8_t ** inputdata;
   double ** delays; /**< delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration */
   double * antfileoffsets; /**< offset from each the nominal start time of the integration for each antenna data file.  
-                                In units of seconds. */
+			      In units of seconds. */
   int numchannels, numantennas, nbaseline, numffts, nbit;
   double lo, bandwidth, sampletime, subinttime;
   bool iscomplex;
@@ -243,9 +243,9 @@ int main(int argc, char *argv[])
 
   samplegranularity = 8 / (nbit * nPol);
   if (samplegranularity < 1)
-  {
-    samplegranularity = 1;
-  }
+    {
+      samplegranularity = 1;
+    }
   nbaseline = numantennas*(numantennas-1)/2;
   if (iscomplex) {
     cfactor = 1;
@@ -266,18 +266,18 @@ int main(int argc, char *argv[])
   // Unpack
   int unpackThreads;
   if (nbit==2 && !iscomplex)
-  {
-    numkernelexecutions = fftsamples/2;
-  }
+    {
+      numkernelexecutions = fftsamples/2;
+    }
   else if (nbit==8 && iscomplex)
-  {
-    numkernelexecutions = fftsamples*2;
-  } 
+    {
+      numkernelexecutions = fftsamples*2;
+    } 
   else
-  {
-    cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
-    exit(1);
-  }
+    {
+      cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
+      exit(1);
+    }
 
   if (numkernelexecutions<=NTHREADS) {
     unpackThreads = numkernelexecutions;
@@ -293,24 +293,24 @@ int main(int argc, char *argv[])
   dim3 unpackBlocks = dim3(executionsperthread, numffts);
 
   /*
-  int unpackThreads = NTHREADS;
-  int unpackBlocks;
-  if (nbit==2 && !iscomplex) {
+    int unpackThreads = NTHREADS;
+    int unpackBlocks;
+    if (nbit==2 && !iscomplex) {
     unpackBlocks = subintsamples/2/unpackThreads; // 2 time samples/byte
     if (unpackThreads*unpackBlocks*nPol!=subintsamples) {
-      cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
-      exit(1);
+    cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
+    exit(1);
     }
-  } else if (nbit==8 && iscomplex) {
+    } else if (nbit==8 && iscomplex) {
     unpackBlocks = subintsamples*nPol/unpackThreads; // Each pol separately
     if (unpackThreads*unpackBlocks!=subintsamples*nPol) {
-      cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
-      exit(1);
+    cerr << "Error: <<" << unpackBlocks << "," << unpackThreads << ">> inconsistent with " << subintsamples << " samples for unpack kernel" << endl;
+    exit(1);
     }
-  } else {
+    } else {
     cerr << "Error: Unsupported number if bits/complex (" << nbit << "/" << iscomplex << ")" << endl;
     exit(1);
-  }*/
+    }*/
   
   // Set the number of blocks for when calculating the delay and phase info
   int delayPhaseThreads;
@@ -400,18 +400,18 @@ int main(int argc, char *argv[])
   // Allocate space on the GPU
   printf("Allocating GPU data\n");
   allocDataGPU(&packedData, &unpackedData, &channelisedData,
-	             &baselineData, &rotationPhaseInfo, &fractionalSampleDelays, &sampleShifts,
+	       &baselineData, &rotationPhaseInfo, &fractionalSampleDelays, &sampleShifts,
                &gpuDelays, numantennas, subintsamples,
-	             nbit, nPol, iscomplex, numchannels, numffts, parallelAccum, kNumStreams, subintbytes);
+	       nbit, nPol, iscomplex, numchannels, numffts, parallelAccum, kNumStreams, subintbytes);
 
   for (int i=0; i<numantennas; i++)
-  {
-    antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
-    if (!antStream.back()->good())
     {
-      cerr << "Problem with file " << antFiles[i] << " - does it exist?" << endl;
+      antStream.push_back(new std::ifstream(antFiles[i].c_str(), std::ios::binary));
+      if (!antStream.back()->good())
+	{
+	  cerr << "Problem with file " << antFiles[i] << " - does it exist?" << endl;
+	}
     }
-  }
 
   // Configure CUFFT
 #ifdef USEHALF
@@ -450,87 +450,87 @@ int main(int argc, char *argv[])
 
   // Check that the number of FFTs is a valid number
   if (numffts%8)
-  {
-    cerr << "Error: numffts must be divisible by 8" << endl;
-    exit(1);
-  }
+    {
+      cerr << "Error: numffts must be divisible by 8" << endl;
+      exit(1);
+    }
 
   // Record the start time
   cudaEventRecord(start_exec, 0);
   cout << "Entering loop" << endl;
   for (int l=0; l<arguments.nloops; l++)
-  {
-    int stream = l % kNumStreams;
+    {
+      int stream = l % kNumStreams;
 
-    // Copy data to GPU
-    // cout << "Copy data to GPU" << endl;
-    for (int i=0; i<numantennas; i++) {
-      gpuErrchk(cudaMemcpyAsync(packedData[stream][i], inputdata[i], subintbytes, cudaMemcpyHostToDevice, streams[stream])); 
-    }
-    
-    // Copy delays to GPU
-    // cout << "Copy delays to GPU" << endl;
-    for (int i=0; i<numantennas; i++) {
-      gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
-      gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
-    }
-
-    int previous_stream = (stream-1);
-    if (previous_stream < 0)
-      previous_stream += kNumStreams;
-    
-    // Wait for the previous stream to complete all of its compute
-    // In testing it was observed that overlapping compute kernels
-    // reduced performance
-    cudaStreamSynchronize(streams[previous_stream]);
-
-    // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
-
-    calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads,0,streams[stream]>>>(gpuDelays[stream], lo, sampletime, fftsamples, numchannels, 
-                                                                                      samplegranularity, rotationPhaseInfo[stream], 
-                                                                                      sampleShifts[stream], fractionalSampleDelays[stream]);
-    CudaCheckError();
-
-    // Unpack the data
-    //cout << "Unpack data" << endl;
-    for (int i=0; i<numantennas; i++) {
-      if (nbit==2 && !iscomplex) {
-	unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
-      } else if (nbit==8 && iscomplex) {
-	      unpack8bitcomplex_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
+      // Copy data to GPU
+      // cout << "Copy data to GPU" << endl;
+      for (int i=0; i<numantennas; i++) {
+	gpuErrchk(cudaMemcpyAsync(packedData[stream][i], inputdata[i], subintbytes, cudaMemcpyHostToDevice, streams[stream])); 
       }
-      CudaCheckError();
-    }
-  
-    // FFT
-
-    cufftSetStream(plan[stream], streams[stream]);
-#ifdef USEHALF
-    if (cufftXtExec(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
-      cout << "CUFFT error: XtExec Forward failed" << endl;
-      return(0);
-    }
-#else
-    if (cufftExecC2C(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
-      cout << "CUFFT error: ExecC2C Forward failed" << endl;
-      return(0);
-    }
-#endif
-    // Fractional Delay Correction
-    FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData[stream], fractionalSampleDelays[stream], numchannels, fftsamples, numffts, subintsamples);
-    CudaCheckError();
     
-    // Cross correlate
+      // Copy delays to GPU
+      // cout << "Copy delays to GPU" << endl;
+      for (int i=0; i<numantennas; i++) {
+	gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4]), delays[i], 3*sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
+	gpuErrchk(cudaMemcpyAsync(&(gpuDelays[stream][i*4+3]), &(antfileoffsets[i]), sizeof(double), cudaMemcpyHostToDevice, streams[stream]));
+      }
 
-    gpuErrchk(cudaMemsetAsync(baselineData[stream], 0, nbaseline*4*numchannels*sizeof(cuComplex), streams[stream]));
+      int previous_stream = (stream-1);
+      if (previous_stream < 0)
+	previous_stream += kNumStreams;
+    
+      // Wait for the previous stream to complete all of its compute
+      // In testing it was observed that overlapping compute kernels
+      // reduced performance
+      cudaStreamSynchronize(streams[previous_stream]);
+
+      // Use the delays to calculate fringe rotation phases and fractional sample delays for each FFT //
+
+      calculateDelaysAndPhases<<<delayPhaseBlocks, delayPhaseThreads,0,streams[stream]>>>(gpuDelays[stream], lo, sampletime, fftsamples, numchannels, 
+											  samplegranularity, rotationPhaseInfo[stream], 
+											  sampleShifts[stream], fractionalSampleDelays[stream]);
+      CudaCheckError();
+
+      // Unpack the data
+      //cout << "Unpack data" << endl;
+      for (int i=0; i<numantennas; i++) {
+	if (nbit==2 && !iscomplex) {
+	  unpack2bit_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
+	} else if (nbit==8 && iscomplex) {
+	  unpack8bitcomplex_2chan_rotate<<<unpackBlocks,unpackThreads,0,streams[stream]>>>(&unpackedData[stream][2*i*subintsamples], packedData[stream][i], &rotationPhaseInfo[stream][i*numffts*2], &(sampleShifts[stream][numffts*i]), fftsamples);
+	}
+	CudaCheckError();
+      }
+  
+      // FFT
+
+      cufftSetStream(plan[stream], streams[stream]);
+#ifdef USEHALF
+      if (cufftXtExec(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
+	cout << "CUFFT error: XtExec Forward failed" << endl;
+	return(0);
+      }
+#else
+      if (cufftExecC2C(plan[stream], unpackedData[stream], channelisedData[stream], CUFFT_FORWARD) != CUFFT_SUCCESS) {
+	cout << "CUFFT error: ExecC2C Forward failed" << endl;
+	return(0);
+      }
+#endif
+      // Fractional Delay Correction
+      FracSampleCorrection<<<fracDelayBlocks,fracDelayThreads>>>(channelisedData[stream], fractionalSampleDelays[stream], numchannels, fftsamples, numffts, subintsamples);
+      CudaCheckError();
+    
+      // Cross correlate
+
+      gpuErrchk(cudaMemsetAsync(baselineData[stream], 0, nbaseline*4*numchannels*sizeof(cuComplex), streams[stream]));
 
 
-    int ccblock_width = 128;
-    //int nantxp = numantennas*2;
-    int nantxp = numantennas;
-    dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
-    CCAH3<<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftsamples);
-  }
+      int ccblock_width = 128;
+      //int nantxp = numantennas*2;
+      int nantxp = numantennas;
+      dim3 ccblock(1+(numchannels-1)/ccblock_width, nantxp-1, nantxp-1);
+      CCAH3<<<ccblock, ccblock_width, 0, streams[stream]>>>(baselineData[stream], channelisedData[stream], numantennas, numffts, numchannels, fftsamples);
+    }
   
   float dtime;
   cudaEventRecord(stop_exec, 0);

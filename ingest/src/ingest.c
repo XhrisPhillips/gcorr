@@ -270,7 +270,6 @@ int ingest_file(conf_t *conf)
   uint64_t frame_in_period;
   uint64_t frame_in_block;
   
-  int thread;
   FILE *fp = NULL;
   char *buf = NULL;
   size_t read_bytes = 0;
@@ -306,10 +305,9 @@ int ingest_file(conf_t *conf)
       break;
 
     // Figure out the location of the data frame;
-    // Accume that each frame from NiC has only one pol, one freq, the order of the data in the ring buffer will be TimeThread
-    // If thread 0 is for freq 0 pol 0, 1 is for freq0 pol 1, 2 is for freq 1 pol 0 and 3 is for freq 1 and pol 2, the order will be TFP
+    // Accume that each frame from NiC has two pol, one freq channel, the order of the data in the ring buffer will be TP
+    // One stream per channel
     memcpy(&hdr, buf, VDIF_HEADER_BYTES);
-    thread = getVDIFThreadID(&hdr);
     frame_in_period = getVDIFFrameNumber(&hdr);
     seconds_from_epoch = getVDIFFrameEpochSecOffset(&hdr);
     frame_in_block = (seconds_from_epoch - conf->seconds_from_epoch) * NFRAME_PER_STREAM_PER_PERIOD + frame_in_period - conf->frame_in_period;
@@ -345,12 +343,11 @@ int ingest_file(conf_t *conf)
       }
       
       if(frame_in_block>=0){
-	curbuf_loc = (frame_in_block*NSTREAM + thread)*NBYTE_PER_DATA; 
+	curbuf_loc = frame_in_block*NSTREAM*NBYTE_PER_DATA; 
 	memcpy(curbuf+curbuf_loc, buf+VDIF_HEADER_BYTES, VDIF_PAYLOAD_BYTES); // No VDIF header goes to ring buffer
       }    
     }
   }
-
   free(buf);
   fclose(fp);
   
