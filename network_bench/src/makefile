@@ -31,13 +31,22 @@ LIBS         = -lrt #-lm -lpthread
 LIB_DIRS     = #-L/usr/local/lib
 INCLUDE_DIRS = #-I/usr/local/include
 
-all: sendto clean
+all: sendto hires_timer clocks setitimer_test clean
 
 sendto:sendto.o
 	$(GCC) -o sendto sendto.o $(LIB_DIRS) $(LIBS)
 
-sendto.o:sendto.c
-	$(GCC) -c sendto.c $(INCLUDE_DIRS) ${C_FLAGS} 
+clocks:clocks.o
+	$(GCC) -o clocks clocks.o $(LIB_DIRS) $(LIBS)
+
+hires_timer:hires_timer.o
+	$(GCC) -o hires_timer hires_timer.o $(LIB_DIRS) $(LIBS)
+
+setitimer_test:setitimer_test.o
+	$(GCC) -o setitimer_test setitimer_test.o $(LIB_DIRS) $(LIBS)
+
+%.o: %.c
+	$(GCC) $(INCLUDE_DIRS) $(C_FLAGS) -c $<
 
 clean:
 	rm -f *.o *~
