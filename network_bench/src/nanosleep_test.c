@@ -56,14 +56,54 @@ int main(int argc, char *argv[])
   double elapsed_time;
   uint64_t n = 10;
   uint64_t i;
-  pthread_attr_t attr;
-  int rs;
+  //pthread_attr_t attr;
+  //int rs;
 
-  rs = pthread_attr_init(&attr);
-  assert(rs==0);
+  //rs = pthread_attr_init(&attr);
+  //assert(rs==0);
+  //
+  //set_thread_policy(&attr,SCHED_RR);
+  ////sched_get_priority_max(SCHED_RR);
+  //sched_setscheduler(SCHED_RR);
+
+  int policy;
+  policy = sched_getscheduler(0);
+  switch(policy) {
+  case SCHED_OTHER:
+    printf("SCHED_OTHER\n");
+    break;
+  case SCHED_RR:
+    printf("SCHED_RR\n");
+    break;
+  case SCHED_FIFO:
+    printf("SCHED_FIFO\n");
+    break;
+  default:
+    printf("Unknown...\n");
+  }
+  struct sched_param sp = { .sched_priority = 1 };
+  int ret = sched_setscheduler(0, SCHED_FIFO, &sp);
+  //fprintf(stdout, "%d\n", sched_get_priority_max(SCHED_FIFO));
+  //fprintf(stdout, "%d\n", sched_get_priority_min(SCHED_FIFO));
+  if (ret == -1) {
+    perror("sched_setscheduler");
+    return 1;
+  }
   
-  set_thread_policy(&attr,SCHED_RR);
-  //set_thread_policy(&attr,SCHED_DEADLINE);
+  policy = sched_getscheduler(0);
+  switch(policy) {
+  case SCHED_OTHER:
+    printf("SCHED_OTHER\n");
+    break;
+  case SCHED_RR:
+    printf("SCHED_RR\n");
+    break;
+  case SCHED_FIFO:
+    printf("SCHED_FIFO\n");
+    break;
+  default:
+    printf("Unknown...\n");
+  }
   
   nsleep.tv_sec = 0;
   nsleep.tv_nsec = 10000;
@@ -76,10 +116,11 @@ int main(int argc, char *argv[])
   elapsed_time = (stop.tv_sec - start.tv_sec) + (stop.tv_nsec - start.tv_nsec)/1.0E9L;
 
   fprintf(stdout, "%f\t%f\t%f\n", 1.0E9*elapsed_time/n, (double)nsleep.tv_nsec, (1.0E9*elapsed_time/n - (double)nsleep.tv_nsec)/(double)nsleep.tv_nsec);
-  get_thread_policy(&attr);
-  
-  rs = pthread_attr_destroy(&attr);
-  assert(rs==0);
+
+  //get_thread_policy(&attr);
+  //
+  //rs = pthread_attr_destroy(&attr);
+  //assert(rs==0);
   
   return EXIT_SUCCESS;
 }
