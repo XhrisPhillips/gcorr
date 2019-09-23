@@ -24,14 +24,16 @@ void missed_alarm(int signum) {
 
 int main(int argc, char *argv[])
 {
-  useconds_t sleep_time = 16;
-  struct itimerval timer;
+  uint nsleep_time = 160000;
+  struct itimerspec timer_value;
+  timer_t timer;
   
-  timer.it_value.tv_sec = 0;
-  timer.it_value.tv_usec = sleep_time;   
-  timer.it_interval.tv_sec = 0;
-  timer.it_interval.tv_usec = sleep_time;
-  
+  timer_value.it_value.tv_sec = 0;
+  timer_value.it_value.tv_nsec = nsleep_time;
+  timer_value.it_interval.tv_sec = 0;
+  timer_value.it_interval.tv_nsec = nsleep_time;
+  timer_create (CLOCK_REALTIME, NULL, &timer);
+  timer_settime (timer, 0, &timer_value, NULL);
   
   sigset_t alarm_sig;
   int signum;
@@ -57,20 +59,16 @@ int main(int argc, char *argv[])
   sa.sin_addr.s_addr = inet_addr(ip);
   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
   
-  if (setitimer(ITIMER_REAL, &timer, 0) < 0) {
-  //if (setitimer(ITIMER_VIRTUAL, &timer, 0) < 0) {
-    perror("setitimer");
-    return EXIT_FAILURE;
-  }
   sigemptyset(&alarm_sig);
   sigaddset(&alarm_sig, SIGALRM);
   
   elapsed_time = 0;
   clock_gettime(CLOCK_BOOTTIME, &start); // Timer at the beginning
+  signal(SIGALRM, missed_alarm);
   
   while (elapsed_time<length) {
-    signal(SIGALRM, missed_alarm);
-    sigwait(&alarm_sig, &signum); /* wait until the next signal */
+    
+    //sigwait(&alarm_sig, &signum); /* wait until the next signal */
     //if(sendto(sock, (void *)buf, 8192, 0,(struct sockaddr *)&sa, tolen) == -1){
     //  fprintf(stdout, "Fail to send with errno %d\n", errno);
     //  break;
@@ -79,8 +77,7 @@ int main(int argc, char *argv[])
     elapsed_time = (stop.tv_sec - start.tv_sec) + (stop.tv_nsec - start.tv_nsec)/1.0E9L;
     pkt_number++;
   }
-  //fprintf(stdout, "%"PRIu64"\t%f\t%f in %f seconds\n", pkt_number, length/(double)sleep_time*1E6, pkt_number/(length/(double)sleep_time*1E6), length);
-  fprintf(stdout, "%"PRIu64"\t%f\t%f in %f seconds\n", pkt_number, elapsed_time/(double)sleep_time*1E6, pkt_number/(elapsed_time/(double)sleep_time*1E6), length);
+  fprintf(stdout, "%"PRIu64"\t%f\t%f in %f seconds\n", pkt_number, elapsed_time/(double)nsleep_time*1E9, pkt_number/(elapsed_time/(double)nsleep_time*1E9), length);
 
   return EXIT_SUCCESS;
 }

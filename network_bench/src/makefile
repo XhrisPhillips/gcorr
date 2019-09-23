@@ -27,11 +27,11 @@ OBJ_DIR      = .
 #LIB_DIRS     = -L/usr/local/cuda/lib64 -L/usr/local/lib 
 #INCLUDE_DIRS = -I/usr/local/include -L/usr/local/cuda/include
 
-LIBS         = -lrt #-lm -lpthread
+LIBS         = -lrt -lpthread -lm
 LIB_DIRS     = #-L/usr/local/lib
 INCLUDE_DIRS = #-I/usr/local/include
 
-all: sendto hires_timer clocks setitimer_test clean
+all: sendto hires_timer clocks setitimer_test timer_settime timer_settime_1 nanosleep_test clean 
 
 sendto:sendto.o
 	$(GCC) -o sendto sendto.o $(LIB_DIRS) $(LIBS)
@@ -44,6 +44,15 @@ hires_timer:hires_timer.o
 
 setitimer_test:setitimer_test.o
 	$(GCC) -o setitimer_test setitimer_test.o $(LIB_DIRS) $(LIBS)
+
+timer_settime:timer_settime.o
+	$(GCC) -o timer_settime timer_settime.o $(LIB_DIRS) $(LIBS)
+
+timer_settime_1:timer_settime_1.o
+	$(GCC) -o timer_settime_1 timer_settime_1.o $(LIB_DIRS) $(LIBS)
+
+nanosleep_test:nanosleep_test.o
+	$(GCC) -o nanosleep_test nanosleep_test.o $(LIB_DIRS) $(LIBS)
 
 %.o: %.c
 	$(GCC) $(INCLUDE_DIRS) $(C_FLAGS) -c $<
