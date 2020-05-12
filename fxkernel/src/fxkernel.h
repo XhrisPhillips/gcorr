@@ -1,3 +1,6 @@
+#ifndef FXKERNEL_H
+#define FXKERNEL_H
+
 #include <string>
 #include <ipps.h>
 #include <ippvm.h>
@@ -181,3 +184,4 @@ private:
   int cfact; /**< "complex factor"; either 1 (for real data) or 2 (for complex data); determines length of substridesize (twice the stridesize for real data [i.e. need 2N samples for nchan] and equal to the stridesize for complex data [need N samples for nchan]) */
 };
 
+#endif

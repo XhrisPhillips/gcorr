@@ -1,3 +1,6 @@
+#ifndef GCORR_COMMON_H
+#define GCORR_COMMON_H
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -7,7 +10,11 @@
 #include <cstring>
 #include <stdint.h>
 
+#ifdef USING_CUDA
 #include "cuda_runtime_api.h"
+#else
+#include "fxkernel.h"
+#endif
 
 using std::vector;
 using std::string;
@@ -48,10 +55,12 @@ void parseConfig(char *configfilename, int &nbit, int & nPol, bool &iscomplex, i
 void allocDataHost(uint8_t ***data, int numantenna, int numchannels, int numffts, int nbit, int nPol, bool iscomplex, int &subintbytes);
 
 /**
- * Allocates the space for the raw (packed, quantised) voltage data.
+ * Read data from file into CPU memory
  * @param bytestoread the number of bytes to read in from the file for each antenna.
  * @param antStream the file streams for each antenna
  * @param inputdata the buffers to fill with data from the file
  * @return 0 for success, positive for an error.
  */
 int readdata(int bytestoread, vector<std::ifstream*> &antStream, uint8_t **inputdata);
+
+#endif

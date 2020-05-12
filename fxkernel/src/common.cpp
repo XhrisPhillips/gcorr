@@ -19,7 +19,15 @@ void allocDataHost(uint8_t ***data, int numantenna, int numchannels, int numffts
 
   *data = new uint8_t*[numantenna];
   for (int a=0; a<numantenna; a++){
-    cudaHostAlloc((void**)&(*data)[a], subintbytes*sizeof(uint8_t), cudaHostAllocDefault);
+#ifdef USING_CUDA
+
+#else
+    (*data)[a] =  vectorAlloc_u8(subintbytes);
+    if ((*data)[a]==NULL) {
+      cerr << "Unable to allocate " << subintbytes << " bytes. Quitting" << endl;
+      std::exit(1);
+    }
+#endif
   }
 }
 
