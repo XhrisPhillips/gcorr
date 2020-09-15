@@ -12,4 +12,5 @@ src/.deps/
 src/Makefile
 src/Makefile.in
 src/testfxkernel
+src/bench_fxkernel
 stamp-h1
