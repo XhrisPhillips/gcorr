@@ -444,7 +444,8 @@ int main(int argc, char *argv[]) {
   int8_t **packedData, **packedData8;
   int32_t *sampleShift;
   float implied_time;
-  dim3 FringeSetblocks, unpackBlocks;
+  //dim3 FringeSetblocks, unpackBlocks;
+  dim3 unpackBlocks;
   double *gpuDelays, **delays, *antfileoffsets;
   double lo, sampletime;
   float *rotationPhaseInfo, *fractionalSampleDelays;
@@ -466,7 +467,7 @@ int main(int argc, char *argv[]) {
   }
 
   unpackBlocks = dim3(executionsperthread, numffts);
-  FringeSetblocks = dim3(8, arguments.nantennas);
+  //FringeSetblocks = dim3(8, arguments.nantennas);
 
   numkernelexecutions = numffts;
   if (numkernelexecutions <= arguments.nthreads) {
@@ -666,8 +667,8 @@ int main(int argc, char *argv[]) {
   printf("  nchannels = %d\n", arguments.nchannels);
   printf("  nffts = %d\n", numffts);
   
-  cudaEventCreate(&start_test_fringerotate);
-  cudaEventCreate(&end_test_fringerotate);
+  //cudaEventCreate(&start_test_fringerotate);
+  //cudaEventCreate(&end_test_fringerotate);
 
   /* Allocate memory for the rotation vector. */
   gpuErrchk(cudaMalloc(&rotVec, arguments.nantennas * numffts * 2 * sizeof(float)));
@@ -693,10 +694,10 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaPeekAtLastError());
     timerEnd(&timers);
     
-    cudaEventRecord(end_test_fringerotate, 0);
-    cudaEventSynchronize(end_test_fringerotate);
-    cudaEventElapsedTime(&(dtime_fringerotate[i]), start_test_fringerotate,
-			 end_test_fringerotate);
+    //cudaEventRecord(end_test_fringerotate, 0);
+    //cudaEventSynchronize(end_test_fringerotate);
+    //cudaEventElapsedTime(&(dtime_fringerotate[i]), start_test_fringerotate,
+    //			 end_test_fringerotate);
     postLaunchCheck();
   }
   timerPrintStatistics(&timers, "FringeRotate", implied_time, jsonvis);
