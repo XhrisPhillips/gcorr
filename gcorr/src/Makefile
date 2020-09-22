@@ -38,7 +38,7 @@ testgpukernel : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
 	$(NVCC) -DUSING_CUDA $(CUFLAGS) $(CLINK) -o $@ $^
 
 testgpukernel_half : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
-	$(NVCC) -DUSING_CUDA  -DUSEHALF $(CUFLAGS) $(CLINK) -o $@ $^
+	$(NVCC) -DUSING_CUDA  -DUSEHALF $(CUFLAGS) -arch=sm_75 $(CLINK) -o $@ $^
 
 benchmark_gxkernel : gxkernel.cu benchmark_gxkernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
