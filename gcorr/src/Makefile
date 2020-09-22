@@ -4,7 +4,7 @@
 
 # CC must be able to generate dependencies with -MM option
 CC      = gcc -O3 -Wall -g
-NVCC	= nvcc -O3 -arch sm_61
+NVCC	= nvcc -O3
 NVDEBUG = nvcc -lineinfo -g -G
 
 EXECS = testgpukernel benchmark_gxkernel validate_xcorr testgpukernel_half
@@ -17,7 +17,7 @@ CUFLAGS	= -I../../fxkernel/src/
 
 CFLAGS  = 
 
-CLINK	= -lcudart -lcufft -lcurand
+CLINK	= -lcudart -lcufft -lcurand -lstdc++ -lm
 
 %.o : %.cu
 	$(NVCC) $(CUFLAGS) -c $<
@@ -35,16 +35,16 @@ debug: NVCC = $(NVDEBUG)
 debug: all
 
 testgpukernel : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
-	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
+	$(NVCC) -DUSING_CUDA $(CUFLAGS) $(CLINK) -o $@ $^
 
 testgpukernel_half : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
-	$(NVCC) -DUSEHALF $(CUFLAGS) $(CLINK) -o $@ $^
+	$(NVCC) -DUSING_CUDA  -DUSEHALF $(CUFLAGS) $(CLINK) -o $@ $^
 
 benchmark_gxkernel : gxkernel.cu benchmark_gxkernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
 
 validate_xcorr : gxkernel.cu validate_xcorr.cu ../../fxkernel/src/common.cpp
-	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
+	$(NVCC) -DUSING_CUDA $(CUFLAGS) $(CLINK) -o $@ $^
 
 clean:
 	rm -f $(DEP)

@@ -60,10 +60,8 @@ public:
   /**
    * Write the subintegration results out into a file
    * @param outfile The output file name
-   * @param runtimens The duration that the processing run took, in nanoseconds
-   * @param starttimestring A human-readable string that contains the time at which this run was started
    */
-  void saveVisibilities(const char * outfile, int runtimens, std::string starttimestring);
+  void saveVisibilities(const char * outfile);
 
 private:
   /**

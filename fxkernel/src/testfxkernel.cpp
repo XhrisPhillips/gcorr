@@ -105,7 +105,13 @@ int main(int argc, char *argv[])
 
   std::cout << "Run time was " << t1.count() << " milliseconds" << endl;
   // Save the visibilities into a dumb ascii file
-  fxkernel.saveVisibilities("vis.out", t1.count(), starttimestring);
+  fxkernel.saveVisibilities("vis.out");
+
+  // Also save the runtime
+  std::ofstream ftiming("runtime.fxkernel.log");
+  ftiming << "Run time was " << t1.count() << " milliseconds" << endl;
+  ftiming << "Start time was " << starttimestring << endl;
+  ftiming.close(); 
 
   // Free memory
   for (i=0; i<numantennas; i++)
