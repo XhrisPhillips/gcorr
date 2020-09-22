@@ -286,7 +286,7 @@ int main(int argc, char *argv[])
   // Free memory
   for (i=0; i<numantennas; i++)
   {
-    delete(inputdata[i]);
+    vectorFree(inputdata[i]);
     delete(delays[i]);
   }
   delete(inputdata);
