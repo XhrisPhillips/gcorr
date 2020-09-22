@@ -12,6 +12,7 @@
 
 #include <cuComplex.h>
 #include <cufft.h>
+
 #include "common.h"
 #include "gxkernel.h"
 
@@ -93,8 +94,8 @@ void allocDataGPU(int8_t ****packedData, COMPLEX ***unpackedData,
   unsigned long long GPUalloc = 0;
 
   *packedData = new int8_t**[num_streams];
-  *unpackedData = new cuComplex*[num_streams];
-  *channelisedData = new cuComplex*[num_streams];
+  *unpackedData = new COMPLEX*[num_streams];
+  *channelisedData = new COMPLEX*[num_streams];
   *baselineData = new cuComplex*[num_streams];
   *rotationPhaseInfo = new float*[num_streams];
   *fractionalSampleDelays = new float*[num_streams];
@@ -423,7 +424,7 @@ int main(int argc, char *argv[])
       cout << "CUFFT error: Handle creation failed" << endl;
       return(0);
     }
-    if (cufftXtMakePlanMany(&plan[s], 1, n, NULL, 0, 0, CUDA_C_16F, NULL, 0, 0, CUDA_C_16F, nPol*numantennas*numffts, workSize, CUDA_C_16F) != CUFFT_SUCCESS) {
+    if (cufftXtMakePlanMany(plan[s], 1, n, NULL, 0, 0, CUDA_C_16F, NULL, 0, 0, CUDA_C_16F, nPol*numantennas*numffts, workSize, CUDA_C_16F) != CUFFT_SUCCESS) {
       cout << "CUFFT error: Plan creation failed" << endl;
       return(0);
     }

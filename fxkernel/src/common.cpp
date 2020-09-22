@@ -20,7 +20,11 @@ void allocDataHost(uint8_t ***data, int numantenna, int numchannels, int numffts
   *data = new uint8_t*[numantenna];
   for (int a=0; a<numantenna; a++){
 #ifdef USING_CUDA
-
+    cudaError_t status = cudaHostAlloc((void**)&(*data)[a], subintbytes*sizeof(uint8_t), cudaHostAllocDefault);
+    if (status!=cudaSuccess) {
+      cerr << "Unable to allocate " << subintbytes << " bytes. Quitting" << endl;
+      std::exit(1);
+    }
 #else
     (*data)[a] =  vectorAlloc_u8(subintbytes);
     if ((*data)[a]==NULL) {
@@ -39,7 +43,7 @@ int readdata(int bytestoread, vector<std::ifstream*> &antStream, uint8_t **input
       if (antStream[i]->eof())    {
         return(2);
       } else {
-        cerr << "Error: Problem reading data" << endl;
+        cerr << "Error: Problem reading data (Read " << antStream[i]->gcount() << " bytes)" << endl;
         return(1);
       }
     }
