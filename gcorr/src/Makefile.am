@@ -12,7 +12,7 @@
 CC      = gcc -O3 -Wall -g
 NVCC    = nvcc -O3
 NVDEBUG = nvcc -lineinfo -g -G
-CFLAGS  =
+AM_CFLAGS  =
 #CLINK   = -lcudart -lcufft -lcurand -lstdc++ -lm -L${IPPROOT}/lib/intel64 -L${IPPROOT}/ipp/lib/intel64 -L${IPPROOT}/compiler/lib/intel64 -lipps -lippvm -lippcore
 CLINK   = -lcudart -lcufft -lcurand -lstdc++ -lm 
 #CUFLAGS = -I../../fxkernel/src/ -I${IPPROOT}ipp/include
@@ -22,7 +22,7 @@ EXEEXT =
 bin_PROGRAMS = testgpukernel benchmark_gxkernel validate_xcorr testgpukernel_half 
 testgpukernel_SOURCES = testgpukernel.cu gxkernel.cu ../../fxkernel/src/common.cpp
 testgpukernel_half_SOURCES = gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
-enchmark_gxkernel_SOURCES = gxkernel.cu benchmark_gxkernel.cu
+benchmark_gxkernel_SOURCES = gxkernel.cu benchmark_gxkernel.cu
 validate_xcorr_SOURCES = gxkernel.cu validate_xcorr.cu ../../fxkernel/src/common.cpp 
 
 

@@ -1,0 +1,8 @@
+How to compile using automake
+
+aclocal
+autoconf
+autoheader
+automake --add-missing
+./configure
+make

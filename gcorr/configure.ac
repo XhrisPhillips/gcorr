@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.69])
 AC_INIT([gcorr], [0.0.1], [adeller@gmail.com], [gcorr], [https://github.com/XhrisPhillips/gcorr])
-AM_INIT_AUTOMAKE(pippo, 2.6)
+AM_INIT_AUTOMAKE([pippo], [2.6])
 AC_CONFIG_SRCDIR([src/gxkernel.h])
 AC_CONFIG_HEADERS([config.h])
 
@@ -12,7 +12,7 @@ AC_PROG_CXX
 AC_PROG_CC
 
 AC_CHECK_PROG(NVCC_CHECK,nvcc,yes)
-AS_IF([test x"$NVCC_CHECK" != x"yes"], [AC_MSG_ERROR([Please install nvcc` before configuring.])])
+AS_IF([test x"$NVCC_CHECK" != x"yes"], [AC_MSG_ERROR([Please install nvcc before configuring.])])
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lcudart':
