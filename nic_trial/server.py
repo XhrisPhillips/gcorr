@@ -14,7 +14,7 @@ if socket.gethostname() == "odin":
 server.port = 5201
 server.protocol = 'udp'
 
-print ("Server is running on address {} and port {}".format(server.server_hostname,
+print ("Server is running on address {} and port {}".format(server.bind_address,
                                                             server.port))
 
 result = server.run()
