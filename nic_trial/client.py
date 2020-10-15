@@ -18,4 +18,3 @@ print ("Client is running on address {} and port {}".format(client.server_hostna
                                                             client.port))
 
 result = client.run()
-result.sent_Mbps
