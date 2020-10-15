@@ -31,5 +31,7 @@ else:
     print('  bits per second      (bps)   {0}'.format(result.bps))
     print('  Kilobits per second  (kbps)  {0}'.format(result.kbps))
     print('  Megabits per second  (Mbps)  {0}'.format(result.Mbps))
+    print('  Megabits per second  (Gbps)  {0}'.format(result.Gbps))
     print('  KiloBytes per second (kB/s)  {0}'.format(result.kB_s))
     print('  MegaBytes per second (MB/s)  {0}'.format(result.MB_s))
+    print('  MegaBytes per second (GB/s)  {0}'.format(result.GB_s))
