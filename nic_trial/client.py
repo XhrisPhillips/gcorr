@@ -4,14 +4,13 @@ import iperf3
 import socket
 
 client = iperf3.Client()
-client.duration = 1
+client.duration = 100
 if socket.gethostname() == "frigg":
     client.server_hostname = "10.17.4.2"
 if socket.gethostname() == "odin":
     client.server_hostname = "10.17.4.1"
 client.port = 5201
 client.protocol = 'udp'
-
 
 print('Connecting to {0}:{1}'.format(client.server_hostname, client.port))
 result = client.run()
