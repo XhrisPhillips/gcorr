@@ -8,10 +8,11 @@ server = iperf3.Server()
 
 # Setup server interface
 if socket.gethostname() == "frigg":
-    server.server_hostname = "10.17.4.1"
+    server.bind_address = "10.17.4.1"
 if socket.gethostname() == "odin":
-    server.server_hostname = "10.17.4.2"
-server.port = 5001
+    server.bind_address = "10.17.4.2"
+server.port = 5201
+server.protocol = 'udp'
 
 print ("Server is running on address {} and port {}".format(server.server_hostname,
                                                             server.port))
