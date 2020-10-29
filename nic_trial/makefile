@@ -23,7 +23,8 @@ TEMP_FILES := *~
 COUNTER := counter
 EXES := $(COUNTER)
 
-LDFLAGS := -lpsrdada -lcudart -lcuda -lm -lrt -lcufft -lpthread -L/usr/local/cuda-10.2/lib64 -L/usr/local/lib -L/home/den15c/.local/lib
+#LDFLAGS := -lpsrdada -lcudart -lcuda -lm -lrt -lcufft -lpthread -L/usr/local/cuda-10.2/lib64 -L/usr/local/lib -L/home/den15c/.local/lib
+LDFLAGS := -lcudart -lcuda -lm -lrt -lcufft -lpthread -L/usr/local/cuda-10.2/lib64 -L/usr/local/lib -L/home/den15c/.local/lib
 CXXFLAGS += -g -I/usr/local/cuda-10.2/include -I/usr/local/include -I/home/den15c/.local/include
 
 HEADERS := 

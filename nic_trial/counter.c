@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #endif
 
+#include <inttypes.h>
 #include <time.h>
 #include <math.h>
 #include <stdio.h>
@@ -15,8 +16,8 @@
 #include <linux/un.h>
 #include <unistd.h>
 
-#include "dada_cuda.h"
-#include "ipcbuf.h"
+//#include "dada_cuda.h"
+//#include "ipcbuf.h"
 
 #define MAX_STRLEN 1024
 #define PKTSZ      8196
