@@ -36,7 +36,6 @@ COUNTER_SRCS := $(COUNTER).c $(SHARED_SRCS)
 	$(CXX) -c -o $@ $< $(CXXFLAGS)
 
 $(COUNTER):$(COUNTER_OBJS)
-	$(ECHO)	$(COUNTER_OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
 
 clean:

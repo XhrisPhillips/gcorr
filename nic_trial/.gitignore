@@ -1,2 +1,5 @@
 *~
 *.o
+capture.c
+capture_main.c
+counter
