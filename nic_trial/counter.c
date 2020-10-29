@@ -16,14 +16,14 @@
 #include <linux/un.h>
 #include <unistd.h>
 
-//#include "dada_cuda.h"
-//#include "ipcbuf.h"
+#include "dada_cuda.h"
+#include "ipcbuf.h"
 
 #define MAX_STRLEN 1024
 #define PKTSZ      8196
 
 double time_diff(struct timespec start,
-		 struct timespec end);
+		 struct timespec current);
 
 void usage(){
   fprintf(stdout,
@@ -40,7 +40,7 @@ void usage(){
 // ./counter -i 10.17.4.2 -p 14700 -l 100
 int main(int argc, char *argv[]){
 
-  uint64_t length;
+  double length;
   int port;
   char ip[MAX_STRLEN];
   int arg;
@@ -55,8 +55,8 @@ int main(int argc, char *argv[]){
 	  exit(EXIT_FAILURE);
 	  
 	case 'l':
-	  sscanf(optarg, "%"SCNd64"", &length);
-	  fprintf(stdout, "INFO: We will counter packets for %"PRIu64" seconds.\n", length);
+	  sscanf(optarg, "%lf", &length);
+	  fprintf(stdout, "INFO: We will counter packets for %f seconds.\n", length);
 	  break;
 
 	case 'i':
@@ -112,11 +112,11 @@ int main(int argc, char *argv[]){
   socklen_t fromlen = sizeof(fromsa);
   char buf[PKTSZ];
   struct timespec start, current;
-  clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
-  clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &current);
+  clock_gettime(CLOCK_REALTIME, &start);
 
   uint64_t counter = 0;
-  while(time_diff(start, current)<length){
+  double elapsed_time = 0;
+  do{
     if(recvfrom(sock, (void *)buf, PKTSZ, 0, (struct sockaddr *)&fromsa, &fromlen) == -1){      
       fprintf(stderr, "ERROR: Can not receive data from %s_%d"
 	      ", which happens at \"%s\", "
@@ -131,15 +131,21 @@ int main(int argc, char *argv[]){
     }
     counter++;
     
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &current);
-  }
+    clock_gettime(CLOCK_REALTIME, &current);
+    
+    elapsed_time = time_diff(start, current);
 
-  fprintf(stdout, "INFO: We got %"PRIu64" packets in %f seconds.", counter, length);
+    //if()
+    //fprintf(stdout, "elapsed time is %f seconds\n", elapsed_time);
+    
+  }while(elapsed_time<length);
+
+  fprintf(stdout, "INFO: We got %"PRIu64" packets in %f seconds.\n", counter, length);
   return EXIT_SUCCESS;
 }
 
 double time_diff(struct timespec start,
-		 struct timespec end){
-  return (end.tv_sec-start.tv_sec +
-	  (end.tv_nsec-start.tv_nsec)/1E9);
+		 struct timespec current){
+  return (current.tv_sec-start.tv_sec +
+	  (current.tv_nsec-start.tv_nsec)/1E9);
 }
