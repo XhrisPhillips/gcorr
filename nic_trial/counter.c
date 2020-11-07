@@ -20,6 +20,8 @@
 #include "dada_cuda.h"
 #include "ipcbuf.h"
 
+#include "vdifio.h"
+
 #define MAX_STRLEN 1024
 #define UPDATE_INTERVAL 1
 
@@ -35,21 +37,27 @@ void usage(){
 	  " -p port number to receive data from \n"
 	  " -l number of seconds to receive data \n"
 	  " -s UDP packet size \n"
+	  " -o time out in seconds, 0 to disable time out \n"
+	  " -b socket buffer size in MBytes, 0 to use default buffer size \n"
+	  " -r enable SO_REUSEADDR socket option \n"
 	  " -h show help\n"
 	  );
 }
 
-// ./counter -i 10.17.4.2 -p 14700 -l 100 -s 8196
+// taskset -c 0 ./counter -i 10.17.4.1 -p 10000 -l 10 -s 4096 -o 10 -b 10 -r 0
 int main(int argc, char *argv[]){
-
-  double length;
-  int port;
-  char ip[MAX_STRLEN];
   int arg;
-  int pktsz;
+  int status;
+  int reuse = 0; ///< Default not to enable SO_REUSEADDR socket option 
+  double length; ///< Receive data for given seconds
+  char ip[MAX_STRLEN]; ///< UDP IP
+  int port; ///< UDP port
+  int pktsz; ///< UDP packet size in bytes
+  int bufsz; ///< Socket buffer size in MBytes
+  int time_out; ///< Socket time out in seconds
   
   /* read in argument from command line */
-  while((arg=getopt(argc,argv,"p:s:l:hi:")) != -1)
+  while((arg=getopt(argc,argv,"p:s:l:hi:o:b:r:")) != -1)
     {
       switch(arg)
 	{
@@ -58,23 +66,77 @@ int main(int argc, char *argv[]){
 	  exit(EXIT_FAILURE);
 	  
 	case 'l':
-	  sscanf(optarg, "%lf", &length);
-	  fprintf(stdout, "INFO: Count packets for %f seconds.\n", length);
+	  status = sscanf(optarg, "%lf", &length);
+	  if(status == 1){
+	    fprintf(stdout, "INFO: Count packets for %f seconds.\n", length);
+	  }
+	  else{
+	    fprintf(stderr, "ERROR: Wrong length option %s\n", optarg);
+	  }
 	  break;
 
 	case 'i':
-	  sscanf(optarg, "%s", ip);
-	  fprintf(stdout, "INFO: Count packages from IP %s.\n", ip);
+	  status = sscanf(optarg, "%s", ip);
+	  if (status == 1){
+	    fprintf(stdout, "INFO: Count packages from IP %s.\n", ip);
+	  }
+	  else{
+	    fprintf(stderr, "ERROR: Wrong IP option %s\n", optarg);
+	  }
 	  break;
 	  
 	case 'p':
-	  sscanf(optarg, "%d", &port);
-	  fprintf(stdout, "INFO: Count packages from port %d.\n", port);
+	  status = sscanf(optarg, "%d", &port);
+	  if (status == 1){
+	    fprintf(stdout, "INFO: Count packages from port %d.\n", port);
+	  }
+	  else{
+	    fprintf(stderr, "ERROR: Wrong port option %s\n", optarg);
+	  }
 	  break;
 	  
 	case 's':
-	  sscanf(optarg, "%d", &pktsz);
-	  fprintf(stdout, "INFO: Packet size is %d bytes.\n", pktsz);
+	  status = sscanf(optarg, "%d", &pktsz);
+	  if (status == 1){
+	    fprintf(stdout, "INFO: Packet size is %d bytes.\n", pktsz);
+	  }
+	  else{
+	    fprintf(stderr, "ERROR: Wrong packet size option %s\n", optarg);
+	  }
+	  break;
+	  
+	case 'o':
+	  status = sscanf(optarg, "%d", &time_out);
+	  if(status == 1){
+	    if(time_out){
+	      fprintf(stdout, "INFO: Socket time out in %d seconds.\n", time_out);
+	    }
+	    else{
+	      fprintf(stdout, "INFO: Time out disabled.\n");
+	    }
+	  }
+	  else{
+	    fprintf(stderr, "ERROR: Wrong time out option %s\n", optarg);
+	  }
+	  break;
+	  
+	case 'b':
+	  status = sscanf(optarg, "%d", &bufsz);
+	  if(status == 1){
+	    if(bufsz){
+	      fprintf(stdout, "INFO: Socket buffer size is %d MBytes.\n", bufsz);
+	    }
+	    else{
+	      fprintf(stdout, "INFO: Use default socket buffer size.\n");
+	    }
+	  }
+	  else{
+	    fprintf(stderr, "ERROR: Wrong socket buffer size option %s\n", optarg);
+	  }
+	  break;
+
+	case 'r':
+	  reuse = 1;
 	  break;
 	  
 	default:
@@ -83,34 +145,50 @@ int main(int argc, char *argv[]){
 	  
 	}
     }
-
-  /* Setup UDP socket */
+  
+  /* Create UDP socket */
   int sock;
   sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-  struct timeval tout = {1, 0};
-  setsockopt(sock,
-	     SOL_SOCKET,
-	     SO_RCVTIMEO,
-	     (const char*)&tout,
-	     sizeof(tout));
+  /* Enable time out when required */
+  if(time_out){
+    struct timeval tout = {time_out, 0};
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+	       (const char*)&time_out, sizeof(time_out));
+  }
 
-  int enable = 1;
-  setsockopt(sock,
-	     SOL_SOCKET,
-	     SO_REUSEADDR,
-	     &enable,
-	     sizeof(enable));
-
+  /* Enable REUSEADDR when required */
+  if (reuse){
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
+	       &reuse, sizeof(reuse));
+  }
+  
+  /* Setup UDP socket receive buffer size */
+  int udpbufbytes;
+  if(bufsz){
+    udpbufbytes = bufsz*1024*1024;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF,
+		   &udpbufbytes, sizeof(udpbufbytes))) {
+      fprintf(stderr, "ERROR: Could not set socket RCVBUF\n");
+    }
+  }
+  
+  /* Check what the socket receive size actually was set to */
+  socklen_t winlen = sizeof(udpbufbytes);
+  if (getsockopt(sock, SOL_SOCKET, SO_RCVBUF,
+		 &udpbufbytes, &winlen)) {
+    fprintf(stderr, "ERROR: Could not get socket RCVBUF size\n");
+  }
+  fprintf(stdout, "Socket buffersize is %d Kbytes\n", udpbufbytes/1024);
+  
+  /* Bind socket */
   struct sockaddr_in sa = {0};
   sa.sin_family      = AF_INET;
   sa.sin_port        = htons(port);
   sa.sin_addr.s_addr = inet_addr(ip);
-
-  /* Bind socket */
   if(bind(sock,
 	  (struct sockaddr *)&sa,
-	  sizeof(sa)) == -1) {
+	  sizeof(sa))) {
     fprintf(stderr, "ERROR: Can not bind to %s_%d"
 	    ", which happens at \"%s\", "
 	    "line [%d], has to abort.\n",
@@ -124,17 +202,19 @@ int main(int argc, char *argv[]){
   }
 
   /* Do capture */
-  struct sockaddr_in fromsa = {0};
-  socklen_t fromlen = sizeof(fromsa);
-  
   struct timespec start;
   clock_gettime(CLOCK_REALTIME, &start);
 
-  uint64_t counter          = 0;
-  uint64_t previous_counter = 0;
+  struct sockaddr_in fromsa = {0};
+  socklen_t fromlen = sizeof(fromsa);
+  
+  uint64_t counter     = 0;
+  uint64_t lastcounter = 0;
   double elapsed_time  = 0;
   int update_threshold = UPDATE_INTERVAL;
   char *buf            = (char *)malloc(pktsz);
+  uint64_t lastseconds = 0;
+  uint64_t lastframe   = 0;
   do{
     if(recvfrom(sock,
 		(void *)buf,
@@ -153,31 +233,35 @@ int main(int argc, char *argv[]){
       
       exit(EXIT_FAILURE);
     }
-
-    uint32_t *ptr = (uint32_t*)buf;
-
-    uint64_t writebuf = ptr[0];    
-    uint32_t seconds_from_epoch = writebuf&0x3FFFFFFF;
-    fprintf(stdout, "seconds from epoch is %zu .\n", seconds_from_epoch);
-
-    writebuf = ptr[1];    
-    uint32_t data_frame = writebuf&0x00FFFFFF;
-    uint32_t epoch      = writebuf&0x3F000000;
     
-    fprintf(stdout, "data from within second is %zu .\n", data_frame);
-    fprintf(stdout, "epoch is %zu .\n", epoch);
+    vdif_header *vheader = (vdif_header*)buf;
+    uint64_t thisframe   = getVDIFFrameNumber(vheader);
+    uint64_t thisseconds = getVDIFFrameSecond(vheader);
+    int threadID = getVDIFThreadID(vheader);
+    //fprintf(stdout,
+    //	    "frame: %"PRIu64"\t"
+    //	    "second: %"PRIu64"\t"
+    //	    "thread: %d\n",
+    //	    thisframe,
+    //	    thisseconds,
+    //	    threadID);
     
     struct timespec current;
     clock_gettime(CLOCK_REALTIME, &current);
     elapsed_time = time_diff(start, current);
 
-    if(elapsed_time > update_threshold){
+    //if(elapsed_time > update_threshold){
+    if(thisseconds > lastseconds){
       fprintf(stdout, "INFO: We got %"PRIu64" packets in %d seconds.\n",
-	      counter-previous_counter,
-	      UPDATE_INTERVAL);
-      previous_counter = counter;
+	      counter-lastcounter, UPDATE_INTERVAL);
+      
+      fprintf(stdout, "INFO: This frame is %"PRIu64" and last frame is %"PRIu64".\n\n",
+	      thisframe, lastframe);
+      lastcounter = counter;
       update_threshold = update_threshold + UPDATE_INTERVAL;
-    }
+    }    
+    lastseconds = thisseconds;
+    lastframe   = thisframe;
     
     counter++;
   }while(elapsed_time<length);

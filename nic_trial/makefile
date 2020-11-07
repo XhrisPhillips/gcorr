@@ -23,8 +23,8 @@ TEMP_FILES := *~
 COUNTER := counter
 EXES := $(COUNTER)
 
-LDFLAGS := -lpsrdada -lcudart -lcuda -lm -lrt -lcufft -lpthread -L/usr/local/cuda-10.2/lib64 -L/usr/local/lib -L$(HOME)/.local/lib
-CXXFLAGS += -g -I/usr/local/cuda-10.2/include -I/usr/local/include -I$(HOME)/.local/include
+LDFLAGS := -lpsrdada -lcudart -lcuda -lm -lrt -lcufft -lpthread -lvdifio -L/usr/local/cuda-10.2/lib64 -L/usr/local/lib -L$(HOME)/.local/lib -L$(DIFXROOT)/lib
+CXXFLAGS += -g -I/usr/local/cuda-10.2/include -I/usr/local/include -I$(HOME)/.local/include -I$(DIFXROOT)/include
 
 HEADERS := 
 SHARED_SRCS :=
