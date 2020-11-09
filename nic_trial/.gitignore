@@ -1,5 +1,7 @@
 *~
 *.o
+capture.h
 capture.c
+udp_recv.c
 capture_main.c
 counter
