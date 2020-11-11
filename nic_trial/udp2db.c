@@ -543,6 +543,9 @@ int main(int argc, char *argv[]){
 
   // Get the first data block
   char *cbuf = ipcbuf_get_next_write(data_block);
+  float seconds_per_blk = nframe/(float)nframe_per_sec;
+  uint64_t nframe_per_blk = nframe*nthread; // Different from nframe as we have nthread
+  uint64_t counter = 0;
   while(!finished){
     if(recvfrom(sock,
 		(void *)buf,
@@ -561,6 +564,7 @@ int main(int argc, char *argv[]){
       close(sock);
       exit(EXIT_FAILURE);
     }
+    counter ++; // increase counter by one
     
     vheader = (vdif_header*)buf;
     uint64_t thisframe   = getVDIFFrameNumber(vheader);
@@ -599,10 +603,19 @@ int main(int argc, char *argv[]){
 	exit(EXIT_FAILURE);
       }
 
+      // Report traffice status of previous buffer block
+      fprintf(stdout, "INFO: Expected %"PRIu64", "
+	      "got %"PRIu64" frames and %f\% lost in %f seconds.\n",
+	      nframe_per_blk,
+	      counter,
+	      100.0*(nframe_per_blk-counter)/(float)nframe_per_blk,
+	      seconds_per_blk);
+      
+      counter = 0; // Reset counter at this point
     }
     // Copy data to ring buffer
     if(copy){
-      memcpy(cbuf+framesize*nthread*frame_index, buf+VDIF_HDRSIZE, framesize);
+      memcpy(cbuf+framesize*(nthread*frame_index+threadID), buf+VDIF_HDRSIZE, framesize);
     }
     
     struct timespec current;
