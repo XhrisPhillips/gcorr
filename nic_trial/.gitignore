@@ -5,3 +5,7 @@ capture.c
 udp_recv.c
 capture_main.c
 counter
+udp2db
+*.pyc
+*.log
+pipeline_craco.py

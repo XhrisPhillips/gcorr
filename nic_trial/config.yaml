@@ -1,0 +1,40 @@
+basic:
+  app: dada_db -p -n 2
+  key: dada
+  
+  writer: udp2db
+  reader: dbdisk
+
+  bandwidth:   256       # Bandwidth in MHz of each channel
+  bits:        16        # Number of bits per sample
+  nchan:       1         # Number of channels
+  nthread:     1         # Number of threads
+  framesize:   4096      # Proposed frame size in bytes
+  nframe:      1024      # Number of frames (per thread) per buffer block
+  
+# Configuration of udp2db when it is used as a writer
+udp2db:
+  app: /data/FRIGG_2/den15c/gcorr/nic_trial/udp2db
+  cpu: 0
+  
+  host:        10.17.4.1 # Host IP
+  port:        10000     # port number
+  
+  duration:    10        # Number of seconds to run
+  window:      50        # Number of MB to receive
+  timeout:     10        # Number of seconds to time out
+
+  template:    psrdada_bigcat.txt # PSRDADA header template
+
+  reuse:       1         # SO_REUSEADD or not
+  sod:         0         # Enable SOD or not  
+  copy:        1         # Copy data to ring buffer or not
+  
+
+# Configuration of dbdisk when it is used as a reader
+dbdisk:
+  app: dada_dbdisk -W -o -z -s
+  cpu: 1
+  
+  directory: . # Directory to put dada file when dbdisk is used as a reader
+  

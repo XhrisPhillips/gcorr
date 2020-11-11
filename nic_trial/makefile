@@ -21,7 +21,8 @@ ECHO := @echo
 RM   := rm -f
 TEMP_FILES := *~
 COUNTER := counter
-EXES := $(COUNTER)
+UDP2DB := udp2db
+EXES := $(COUNTER) $(UDP2DB)
 
 LDFLAGS := -lpsrdada -lcudart -lcuda -lm -lrt -lcufft -lpthread -lvdifio -L/usr/local/cuda-10.2/lib64 -L/usr/local/lib -L$(HOME)/.local/lib -L$(DIFXROOT)/lib -fopenmp
 CXXFLAGS += -g -I/usr/local/cuda-10.2/include -I/usr/local/include -I$(HOME)/.local/include -I$(DIFXROOT)/include
@@ -31,6 +32,8 @@ SHARED_SRCS :=
 SHARED_OBJS := $(patsubst %.c, %.o, $(EXE_SHARED_SRCS))
 COUNTER_OBJS := $(COUNTER).o $(SHARED_OBJS)
 COUNTER_SRCS := $(COUNTER).c $(SHARED_SRCS)
+UDP2DB_OBJS := $(UDP2DB).o $(SHARED_OBJS)
+UDP2DB_SRCS := $(UDP2DB).c $(SHARED_SRCS)
 
 %.o: %.c $(HEADERS)
 	$(CXX) -c -o $@ $< $(CXXFLAGS)
@@ -38,8 +41,11 @@ COUNTER_SRCS := $(COUNTER).c $(SHARED_SRCS)
 $(COUNTER):$(COUNTER_OBJS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
 
+$(UDP2DB):$(UDP2DB_OBJS)
+	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+
 clean:
-	$(RM) $(COUNTER_OBJS) $(TEMP_FILES) $(EXES)
+	$(RM) $(COUNTER_OBJS) $(UDP2DB_OBJS) $(TEMP_FILES) $(EXES)
 
 .PHONY: all clean
 all: $(EXES)
