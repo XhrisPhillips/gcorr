@@ -91,7 +91,7 @@ struct option options[] = {
   {0, 0, 0, 0}
 };
 
-// taskset -c 0 ./udp2db -d 10 -M 128 -H 10.17.4.1 -p 10000 -w 10 -F 4096 -n 1 -b 16 -T 1 -t 1 -r -N 1024 -k dada -s -D psrdada_bigcat.txt -c 
+// taskset -c 0 ./udp2db -d 10 -M 128 -H 10.17.4.1 -p 10000 -w 10 -F 10000 -n 1 -b 16 -T 1 -t 1 -r -N 1024 -k dada -s -D psrdada_bigcat.txt -c 
 
 int main(int argc, char *argv[]){
   
@@ -320,6 +320,7 @@ int main(int argc, char *argv[]){
     }
     framesize -= 8;
   }
+  fprintf(stdout, "INFO: %"PRIu64" bytes per second\n", bytes_per_sec);
   fprintf(stdout, "INFO: Final dataframe size in bytes is %d.\n", framesize);
 
   // Get number of frames per second
@@ -570,7 +571,12 @@ int main(int argc, char *argv[]){
     uint64_t thisframe   = getVDIFFrameNumber(vheader);
     uint64_t thisseconds = getVDIFFrameSecond(vheader);
     int threadID    = getVDIFThreadID(vheader);
-    int frame_index = (thisseconds-ref_frame)*nframe_per_sec + (thisframe - ref_frame);
+    int frame_index = (thisseconds-ref_seconds)*nframe_per_sec + (thisframe - ref_frame);
+    //fprintf(stdout, "this frame is %"PRIu64"\n", thisframe);
+    //fprintf(stdout, "reference frame is %"PRIu64"\n", ref_frame);    
+    //fprintf(stdout, "this seconds is %"PRIu64"\n", thisseconds);
+    //fprintf(stdout, "reference seconds is %"PRIu64"\n", ref_seconds);
+    
     if(frame_index >= nframe){
       // Update frame_index
       frame_index -= nframe;
@@ -605,7 +611,7 @@ int main(int argc, char *argv[]){
 
       // Report traffice status of previous buffer block
       fprintf(stdout, "INFO: Expected %"PRIu64", "
-	      "got %"PRIu64" frames and %f\% lost in %f seconds.\n",
+	      "got %"PRIu64" frames and %f%% lost in %f seconds.\n",
 	      nframe_per_blk,
 	      counter,
 	      100.0*(nframe_per_blk-counter)/(float)nframe_per_blk,
@@ -613,6 +619,8 @@ int main(int argc, char *argv[]){
       
       counter = 0; // Reset counter at this point
     }
+    
+    //fprintf(stdout, "frame index is %d\n\n", frame_index);
     // Copy data to ring buffer
     if(copy){
       memcpy(cbuf+framesize*(nthread*frame_index+threadID), buf+VDIF_HDRSIZE, framesize);

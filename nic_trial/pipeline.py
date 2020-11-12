@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Script to run CRACO pipeline with different mode. 
+Script to run bigcat udp2db pipeline with given configurations in YAML file.
 
 Copyright (C) CSIRO 2020
 """
@@ -25,11 +25,12 @@ class Pipeline(object):
     '''
     def __init__(self, values):
         self._execution   = values.execution
-        yaml_fname        = values.yaml_fname[0]
+        yaml_fname        = values.config[0]
 
         # Get log setup
         self._log = logging.getLogger(__name__)
         #self._log = logging.getLogger(None)
+        #self._log = logging.getLogger("root")
 
         # Get configuration from yaml file
         with open(yaml_fname) as f:
@@ -52,6 +53,7 @@ class Pipeline(object):
         
         # Not shared with other functions for sure
         app = self._yaml_dict["basic"]["app"]
+        self._log.debug("app is {}".format(app))
         
         # Shared configurations for sure
         self._key    = self._yaml_dict["basic"]["key"]
@@ -83,9 +85,9 @@ class Pipeline(object):
         # build dada_db command line
         bytes_per_sec = 2E6*self._bits*self._nchan*self._bandwidth/8
         while self._framesize > 0:
-            if(bytes_per_sec%framesize == 0):
+            if(bytes_per_sec%self._framesize == 0):
                 break
-            framesize = framesize - 8
+            self._framesize = self._framesize - 8
             
         blksz = self._nthread*self._nframe*self._framesize
         command = "{} -k {} -r {} -b {}".format(app,
@@ -129,12 +131,14 @@ class Pipeline(object):
         self._sync_executions()
         
     def _run_reader(self):
-        if "dbdisk" in self._reader:
-            self._dbdisk()            
+        if self._reader:
+            if "dbdisk" in self._reader:
+                self._dbdisk()            
 
     def _run_writer(self):
-        if "udp2db" in self._writer:
-            self._udp2db()
+        if self._writer:
+            if "udp2db" in self._writer:
+                self._udp2db()
 
     def _udp2db(self):
         # Build udp2db command line
@@ -153,11 +157,14 @@ class Pipeline(object):
         sod      = self._yaml_dict["udp2db"]["sod"]
         copy     = self._yaml_dict["udp2db"]["copy"]
 
-        # taskset -c 0 ./udp2db -d 10 -M 128 -H 10.17.4.1 -p 10000 -w 10 -F 4096 -n 1 -b 16 -T 1 -t 1 -r -N 1024 -k dada -s -D psrdada_bigcat.txt -c        
+        # Overwrite SOD to 0 if we do not have reader
+        if self._reader == None:
+            sod = 0
+        # taskset -c 0 ./udp2db -d 10 -M 128 -H 10.17.4.1 -p 10000 -w 10 -F 4096 -n 1 -b 16 -T 1 -t 1 -r -N 1024 -k dada -s -D psrdada_bigcat.txt -c
         command = ("taskset -c {} {} -d {} -M {}"
                    " -H {} -p {} -w {} -F {} -n {}"
-                   " -b {} -T {} -t {} -N {} -k {} -D {}").format(cpu, app, duration, self._bandwidth
-                                                                  host, port, window, self._framesize, self._nchan
+                   " -b {} -T {} -t {} -N {} -k {} -D {}").format(cpu, app, duration, self._bandwidth,
+                                                                  host, port, window, self._framesize, self._nchan,
                                                                   self._bits, self._nthread, timeout, self._nframe,
                                                                   self._key, template)
         
@@ -272,6 +279,8 @@ def _main():
                         help='YAML file to provide configurations')
     parser.add_argument('-e', '--execution', action='store_true',
                         help='Execution or not')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Be verbose')
     parser.set_defaults(execution=False)
     parser.set_defaults(verbose=False)
     values = parser.parse_args()
@@ -279,6 +288,7 @@ def _main():
     ## Setup logger
     logging.basicConfig(filename='{}.log'.format(__name__))
     log = logging.getLogger(__name__)
+    #log = logging.getLogger("root")
     if values.verbose:
         coloredlogs.install(
             fmt="[ %(levelname)s\t- %(asctime)s - %(name)s - %(filename)s:%(lineno)s] %(message)s",
@@ -292,5 +302,6 @@ def _main():
     pipeline.run()
 
 if __name__ == "__main__":
-    # pipeline -s localhost:2379 -r /SB123/beam01 -v -e
+    # pipeline -c config.txt -v -e
+    # taskset -c 10 vlbi_fake -vdif  -H 10.17.4.1 -p 10000 -udp 10000 -d 10000 -novtp -bandwidth 128 -sleep 4.3 -b 16 -nchan 1 -complex -nthread 1
     _main()
