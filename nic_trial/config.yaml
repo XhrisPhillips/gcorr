@@ -9,8 +9,9 @@ basic:
   bits:        16     # Number of bits per sample
   nchan:       1      # Number of channels
   nthread:     1      # Number of threads
-  framesize:   8192   # Proposed frame size in bytes
-  nframe:      62500  # Number of frames (per thread) per buffer block
+  framesize:   10000  # Proposed frame size in bytes
+  #nframe:      62500  # Number of frames (per thread) per buffer block
+  blength:     1      # Seconds data for each ring buffer block
   
 # Configuration of udp2db when it is used as a writer
 udp2db:
@@ -20,7 +21,7 @@ udp2db:
   host:        10.17.4.1 # Host IP
   port:        10000     # port number
   
-  duration:    100       # Number of seconds to run
+  duration:    20        # Number of seconds to run
   window:      50        # Number of MB to receive
   timeout:     10        # Number of seconds to time out
 

@@ -53,7 +53,7 @@ void usage(){
 	  "  -p/-port <PORT>            Port number for receive \n"
 	  "  -d/-duration <DUR>         Time in seconds to run, 0 to run forever \n"
 	  "  -M/-bandwidth <BANWIDTH>   Channel bandwidth in MHz \n"
-	  "  -f/-framesize <FRAMESIZE>  Data frame size for VDIF data (bytes) \n"
+	  "  -f/-framesize <FRAMESIZE>  Frame size with VDIF header (bytes) \n"
 	  "  -n/-nchan <N>              Number of channels to assume in stream \n"
 	  "  -b/-bits <N>               Number of bits/channel \n"
 	  "  -w/-window <SIZE>          UDP window size (MB) \n"
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]){
   int copy = 0; ///< Default not to copy data to ring buffer
   
   int bits; ///< bits per channel
-  int framesize; ///< Data frame size in bytes
+  int framesize; ///< Frame size in bytes (with vdif header)
   int port; ///< UDP port
   int bandwidth; ///< Bandwidth in MHz
   int nchan; ///< Number of channels
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "ERROR: Bad framesize option %s\n", optarg);
 	return EXIT_FAILURE;
       }
-      fprintf(stdout, "INFO: Data frame size is %d bytes \n", framesize);
+      fprintf(stdout, "INFO: Proposed frame size (with vdif header) is %d bytes \n", framesize);
       break;
 
     case 'n':
@@ -314,6 +314,7 @@ int main(int argc, char *argv[]){
 
   // Adjust framesize first to make sure that we have integer frames per second
   uint64_t bytes_per_sec = 2E6*bits*nchan*bandwidth/8;
+  framesize = framesize - VDIF_HDRSIZE; // Only need data frame size here
   while(framesize > 0){
     if(bytes_per_sec%framesize == 0){
       break;
@@ -321,8 +322,9 @@ int main(int argc, char *argv[]){
     framesize -= 8;
   }
   fprintf(stdout, "INFO: %"PRIu64" bytes per second\n", bytes_per_sec);
-  fprintf(stdout, "INFO: Final dataframe size in bytes is %d.\n", framesize);
-
+  fprintf(stdout, "INFO: Final frame size (without vdif header) "
+	  "in bytes is %d.\n", framesize - VDIF_HDRSIZE);
+  
   // Get number of frames per second
   uint64_t nframe_per_sec = bytes_per_sec/framesize;
   fprintf(stdout, "INFO: %"PRIu64" data frames per second\n", nframe_per_sec);
@@ -422,16 +424,18 @@ int main(int argc, char *argv[]){
   }
 
   // Setup socket receive buffer
-  int pktsz = framesize + VDIF_HDRSIZE;
-  char *buf = (char *)malloc(pktsz);
-  fprintf(stdout, "INFO: Data frame plus header size is %d bytes \n", pktsz);
+  framesize = framesize + VDIF_HDRSIZE; // Add header back here
+  fprintf(stdout, "INFO: Final frame size (with vdif header) "
+	  "in bytes is %d.\n", framesize);
+  char *buf = (char *)malloc(framesize);
+  fprintf(stdout, "INFO: Data frame plus header size is %d bytes \n", framesize);
 
   // Get first frame and decode reference timestamp 
   struct sockaddr_in fromsa = {0};
   socklen_t fromlen = sizeof(fromsa);
   if(recvfrom(sock,
 	      (void *)buf,
-	      pktsz,
+	      framesize,
 	      0,
 	      (struct sockaddr *)&fromsa,
 	      &fromlen) == -1){      
@@ -550,7 +554,7 @@ int main(int argc, char *argv[]){
   while(!finished){
     if(recvfrom(sock,
 		(void *)buf,
-		pktsz,
+		framesize,
 		0,
 		(struct sockaddr *)&fromsa,
 		&fromlen) == -1){      

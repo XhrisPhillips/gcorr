@@ -15,6 +15,8 @@ from execute import ExecuteCommand
 
 __author__ = "Xinping Deng <xinping.deng@csiro.au>"
 
+VDIF_HDRSIZE = 32
+
 class PipelineError(Exception):
     pass
 
@@ -73,23 +75,28 @@ class Pipeline(object):
         self._nchan     = int(self._yaml_dict["basic"]["nchan"])
         self._nthread   = int(self._yaml_dict["basic"]["nthread"])
         self._framesize = int(self._yaml_dict["basic"]["framesize"])
-        self._nframe    = int(self._yaml_dict["basic"]["nframe"])
         
         self._log.debug("bandwidth is {} MHz".format(self._bandwidth))
         self._log.debug("bits per sample is {}".format(self._bits))
         self._log.debug("nchan is {}".format(self._nchan))
         self._log.debug("nthread is {}".format(self._nthread))
-        self._log.debug("proposed framesize is {} bytes".format(self._framesize))
-        self._log.debug("{} frames per channel/thread per buffer block".format(self._nframe))
+        self._log.debug("proposed framesize with vdif header is {} bytes".format(self._framesize))
 
         # build dada_db command line
         bytes_per_sec = 2E6*self._bits*self._nchan*self._bandwidth/8
-        while self._framesize > 0:
-            if(bytes_per_sec%self._framesize == 0):
+        framesize = self._framesize - VDIF_HDRSIZE # Remove header for the calculation latter
+        while framesize > 0:
+            if(bytes_per_sec%framesize == 0):
                 break
-            self._framesize = self._framesize - 8
-            
-        blksz = self._nthread*self._nframe*self._framesize
+            framesize = framesize - 8
+
+        # Figure out nframe from block length
+        blength = int(self._yaml_dict["basic"]["blength"])
+        self._log.debug("{} seconds data per channel/thread per buffer block".format(blength))
+        self._nframe = int(blength*bytes_per_sec/framesize)
+        self._log.debug("{} frames per channel/thread per buffer block".format(self._nframe))
+        
+        blksz = self._nthread*self._nframe*framesize
         command = "{} -k {} -r {} -b {}".format(app,
                                                 self._key,
                                                 nreader, 
