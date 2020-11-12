@@ -84,23 +84,25 @@ class Pipeline(object):
 
         # build dada_db command line
         bytes_per_sec = 2E6*self._bits*self._nchan*self._bandwidth/8
-        framesize = self._framesize - VDIF_HDRSIZE # Remove header for the calculation latter
-        while framesize > 0:
-            if(bytes_per_sec%framesize == 0):
+        datasize = self._framesize - VDIF_HDRSIZE # Remove header for the calculation latter
+        while datasize > 0:
+            if(bytes_per_sec%datasize == 0):
                 break
-            framesize = framesize - 8
+            datasize = datasize - 8
 
         # Figure out nframe from block length
         blength = int(self._yaml_dict["basic"]["blength"])
         self._log.debug("{} seconds data per channel/thread per buffer block".format(blength))
-        self._nframe = int(blength*bytes_per_sec/framesize)
+        self._nframe = int(blength*bytes_per_sec/datasize)
         self._log.debug("{} frames per channel/thread per buffer block".format(self._nframe))
         
-        blksz = self._nthread*self._nframe*framesize
-        command = "{} -k {} -r {} -b {}".format(app,
-                                                self._key,
-                                                nreader, 
-                                                blksz)
+        blksz = self._nthread*self._nframe*datasize
+        cpu  = self._yaml_dict["basic"]["cpu"]
+        command = "taskset -c {} {} -k {} -r {} -b {}".format(cpu,
+                                                              app,
+                                                              self._key,
+                                                              nreader, 
+                                                              blksz)
         self._log.info("Create ring buffer as '{}'".format(command))
         execution_instance = ExecuteCommand(command,
                                             self._execution)
@@ -161,12 +163,13 @@ class Pipeline(object):
         timeout  = self._yaml_dict["udp2db"]["timeout"]
         template = self._yaml_dict["udp2db"]["template"]
         reuse    = self._yaml_dict["udp2db"]["reuse"]
-        sod      = self._yaml_dict["udp2db"]["sod"]
         copy     = self._yaml_dict["udp2db"]["copy"]
 
-        # Overwrite SOD to 0 if we do not have reader
+        # sod to 0 if there is no reader
         if self._reader == None:
             sod = 0
+        else:
+            sod = 1
         # taskset -c 0 ./udp2db -d 10 -M 128 -H 10.17.4.1 -p 10000 -w 10 -F 4096 -n 1 -b 16 -T 1 -t 1 -r -N 1024 -k dada -s -D psrdada_bigcat.txt -c
         command = ("taskset -c {} {} -d {} -M {}"
                    " -H {} -p {} -w {} -F {} -n {}"

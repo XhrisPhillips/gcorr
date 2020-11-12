@@ -51,7 +51,7 @@ void usage(){
 	  "Usage: udp2db [options] \n"
 	  "  -H/-host <HOSTNAME>        Remote host to connect to \n"
 	  "  -p/-port <PORT>            Port number for receive \n"
-	  "  -d/-duration <DUR>         Time in seconds to run, 0 to run forever \n"
+	  "  -d/-duration <DUR>         Time in seconds to run \n"
 	  "  -M/-bandwidth <BANWIDTH>   Channel bandwidth in MHz \n"
 	  "  -f/-framesize <FRAMESIZE>  Frame size with VDIF header (bytes) \n"
 	  "  -n/-nchan <N>              Number of channels to assume in stream \n"
@@ -314,23 +314,23 @@ int main(int argc, char *argv[]){
 
   // Adjust framesize first to make sure that we have integer frames per second
   uint64_t bytes_per_sec = 2E6*bits*nchan*bandwidth/8;
-  framesize = framesize - VDIF_HDRSIZE; // Only need data frame size here
-  while(framesize > 0){
-    if(bytes_per_sec%framesize == 0){
+  int datasize = framesize - VDIF_HDRSIZE; // Only need data frame size here
+  while(datasize > 0){
+    if(bytes_per_sec%datasize == 0){
       break;
     }
-    framesize -= 8;
+    datasize -= 8;
   }
   fprintf(stdout, "INFO: %"PRIu64" bytes per second\n", bytes_per_sec);
   fprintf(stdout, "INFO: Final frame size (without vdif header) "
-	  "in bytes is %d.\n", framesize - VDIF_HDRSIZE);
+	  "in bytes is %d.\n", datasize);
   
   // Get number of frames per second
-  uint64_t nframe_per_sec = bytes_per_sec/framesize;
+  uint64_t nframe_per_sec = bytes_per_sec/datasize;
   fprintf(stdout, "INFO: %"PRIu64" data frames per second\n", nframe_per_sec);
   
   // Check the ring buffer block size
-  uint64_t blksz = nthread*nframe*framesize; // Expected buffer block size
+  uint64_t blksz = nthread*nframe*datasize; // Expected buffer block size
   if(blksz != ipcbuf_get_bufsz(data_block))  {
     fprintf(stderr, "ERROR: Buffer size mismatch, "
 	    "%"PRIu64" vs %"PRIu64", "
@@ -424,7 +424,7 @@ int main(int argc, char *argv[]){
   }
 
   // Setup socket receive buffer
-  framesize = framesize + VDIF_HDRSIZE; // Add header back here
+  framesize = datasize + VDIF_HDRSIZE; // Add header back here
   fprintf(stdout, "INFO: Final frame size (with vdif header) "
 	  "in bytes is %d.\n", framesize);
   char *buf = (char *)malloc(framesize);
@@ -551,7 +551,8 @@ int main(int argc, char *argv[]){
   float seconds_per_blk = nframe/(float)nframe_per_sec;
   uint64_t nframe_per_blk = nframe*nthread; // Different from nframe as we have nthread
   uint64_t counter = 0;
-  while(!finished){
+  double elapsed_time = 0;
+  while((!finished) && (elapsed_time<duration)){
     if(recvfrom(sock,
 		(void *)buf,
 		framesize,
@@ -564,7 +565,7 @@ int main(int argc, char *argv[]){
 	      inet_ntoa(sa.sin_addr),		\
 	      ntohs(sa.sin_port),		\
 	      __FILE__, __LINE__);
-
+      
       free(buf);
       close(sock);
       exit(EXIT_FAILURE);
@@ -612,7 +613,7 @@ int main(int argc, char *argv[]){
 	close(sock);
 	exit(EXIT_FAILURE);
       }
-
+      
       // Report traffice status of previous buffer block
       fprintf(stdout, "INFO: Expected %"PRIu64", "
 	      "got %"PRIu64" frames and %f%% lost in %f seconds.\n",
@@ -620,28 +621,34 @@ int main(int argc, char *argv[]){
 	      counter,
 	      100.0*(nframe_per_blk-counter)/(float)nframe_per_blk,
 	      seconds_per_blk);
+      fflush(stdout);
       
       counter = 0; // Reset counter at this point
     }
     
     //fprintf(stdout, "frame index is %d\n\n", frame_index);
-    // Copy data to ring buffer
-    if(copy){
-      memcpy(cbuf+framesize*(nthread*frame_index+threadID), buf+VDIF_HDRSIZE, framesize);
+    if (copy){
+      memcpy(cbuf+datasize*(nthread*frame_index+threadID), buf+VDIF_HDRSIZE, datasize);
     }
     
     struct timespec current;
     clock_gettime(CLOCK_REALTIME, &current);
-    double elapsed_time = (current.tv_sec-start.tv_sec +
-			   (current.tv_nsec-start.tv_nsec)/1E9);
-
-    // Stop when elapsed time >= duration when duration > 0
-    // Otherwise run until ctrl+c
-    if((duration>0) &&(elapsed_time>=duration)){
-      break;
+    elapsed_time = (current.tv_sec-start.tv_sec +
+		    (current.tv_nsec-start.tv_nsec)/1E9);
+  }
+  
+  // Enable eod at the end
+  if(ipcbuf_is_writing(data_block)){
+    if(ipcbuf_enable_eod(data_block)){
+      fprintf(stderr, "ERROR: Can not enable eod, "
+	      "which happens at \"%s\", line [%d].\n", __FILE__, __LINE__);
+      
+      close(sock);
+      free(buf);
+      exit(EXIT_FAILURE);
     }
   }
-
+  
   // Enable eod at the end
   if(ipcbuf_is_writing(data_block)){
     if(ipcbuf_enable_eod(data_block)){
