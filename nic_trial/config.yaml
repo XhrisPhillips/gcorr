@@ -4,7 +4,7 @@ basic:
   cpu: 0
   
   writer: udp2db
-  reader: dbdisk
+  reader: #dbdisk
 
   bandwidth:   128    # Bandwidth in MHz of each channel
   bits:        16     # Number of bits per sample

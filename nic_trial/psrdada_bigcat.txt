@@ -28,8 +28,8 @@ RA           unset               # Right Ascension of the source
 DEC          unset               # Declination of the source
 
 # description of the instrument
-TELESCOPE    Effelsberg        # telescope name
-INSTRUMENT   PAF               # instrument name
+TELESCOPE    ATCA              # telescope name
+INSTRUMENT   BIGCAT            # instrument name
 RECEIVER     unset             # Frontend receiver, use it for the beam ID of BMF
 FREQ         unset             # centre frequency in MHz
 BW           336.0             # bandwidth of in MHz (-ve lower sb)

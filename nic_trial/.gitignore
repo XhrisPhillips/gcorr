@@ -9,3 +9,4 @@ udp2db
 *.pyc
 *.log
 pipeline_craco.py
+*bk

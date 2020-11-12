@@ -514,7 +514,7 @@ int main(int argc, char *argv[]){
     close(sock);
     exit(EXIT_FAILURE);
   }
-  if(ascii_header_set(hdrbuf, "BW", "%f", bandwidth)){
+  if(ascii_header_set(hdrbuf, "BW", "%d", bandwidth)){
     fprintf(stderr, "ERROR: Error getting BW, "
 	    "which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
 
@@ -530,6 +530,23 @@ int main(int argc, char *argv[]){
     close(sock);
     exit(EXIT_FAILURE);
   }
+  if(ascii_header_set(hdrbuf, "NBIT", "%d", bits)){
+    fprintf(stderr, "ERROR: Error getting NBIT, "
+	    "which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
+    
+    free(buf);
+    close(sock);
+    exit(EXIT_FAILURE);
+  }
+  double tsamp = 0.5/bandwidth; // in microsecond
+  if(ascii_header_set(hdrbuf, "TSAMP", "%.8f", tsamp)){
+    fprintf(stderr, "ERROR: Error setting TSAMP, "
+	    "which happens at \"%s\", line [%d], has to abort.\n", __FILE__, __LINE__);
+    
+    free(buf);
+    close(sock);
+    exit(EXIT_FAILURE);
+  }  
   
   /* donot set header parameters anymore */
   if(ipcbuf_mark_filled(header_block, DADA_DEFAULT_HEADER_SIZE)){
