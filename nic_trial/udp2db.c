@@ -666,18 +666,6 @@ int main(int argc, char *argv[]){
     }
   }
   
-  // Enable eod at the end
-  if(ipcbuf_is_writing(data_block)){
-    if(ipcbuf_enable_eod(data_block)){
-      fprintf(stderr, "ERROR: Can not enable eod, "
-	      "which happens at \"%s\", line [%d].\n", __FILE__, __LINE__);
-      
-      close(sock);
-      free(buf);
-      exit(EXIT_FAILURE);
-    }
-  }
-  
   // Free buffer 
   free(buf);
 

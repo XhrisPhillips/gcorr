@@ -38,9 +38,9 @@ class Pipeline(object):
         with open(yaml_fname) as f:
             self._yaml_dict = yaml.load(f, yaml.Loader)
             
-        # Reset at the very beginning
-        self._log.info("Reset at the beginning")
-        self._reset()
+        ## Reset at the very beginning
+        #self._log.info("Reset at the beginning")
+        #self._reset()
         
         # Default we do not have ring buffer
         self._has_db = False
@@ -236,11 +236,11 @@ class Pipeline(object):
             execution_instance.stdout_callbacks.add(self._stdout_handle)
             execution_instance.finish()
 
-        self._log.info("Reset everything at the end")
-        self._reset()
+        #self._log.info("Reset everything at the end")
+        #self._reset()
 
     def _reset(self):
-        commands = ["ipcrm -a",
+        commands = [#"ipcrm -a",
                     "pkill -9 -f dada_db",
                     "pkill -9 -f dada_diskdb",
                     "pkill -9 -f dada_dbdisk",

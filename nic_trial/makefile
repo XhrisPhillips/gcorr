@@ -21,7 +21,7 @@ ECHO := @echo
 RM   := rm -f
 TEMP_FILES := *~
 COUNTER := counter
-UDP2DB := udp2db
+UDP2DB := udp2db_second
 EXES := $(COUNTER) $(UDP2DB)
 
 LDFLAGS := -lpsrdada -lcudart -lcuda -lm -lrt -lcufft -lpthread -lvdifio -L/usr/local/cuda-10.2/lib64 -L/usr/local/lib -L$(HOME)/.local/lib -L$(DIFXROOT)/lib -fopenmp
