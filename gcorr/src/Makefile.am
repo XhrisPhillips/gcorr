@@ -10,7 +10,7 @@
 # compiled, but should be listed as dependencies so that
 # they get distributed.
 CC      = gcc -O3 -Wall -g
-NVCC    = nvcc -O3
+NVCC    = nvcc -O3 -arch=sm_86 -lineinfo -maxrregcount 64
 NVDEBUG = nvcc -lineinfo -g -G
 AM_CFLAGS  =
 #CLINK   = -lcudart -lcufft -lcurand -lstdc++ -lm -L${IPPROOT}/lib/intel64 -L${IPPROOT}/ipp/lib/intel64 -L${IPPROOT}/compiler/lib/intel64 -lipps -lippvm -lippcore
@@ -25,12 +25,11 @@ testgpukernel_half_SOURCES = gxkernel.cu testgpukernel.cu ../../fxkernel/src/com
 benchmark_gxkernel_SOURCES = gxkernel.cu benchmark_gxkernel.cu
 validate_xcorr_SOURCES = gxkernel.cu validate_xcorr.cu ../../fxkernel/src/common.cpp 
 
-
 testgpukernel$(EXEEXT) : testgpukernel.cu gxkernel.cu ../../fxkernel/src/common.cpp
-	$(NVCC) -DUSING_CUDA $(CUFLAGS) $(CLINK) -o $@ $^
+	$(NVCC) -DUSING_CUDA $(CUFLAGS)  $(CLINK) -o $@ $^
 
 testgpukernel_half$(EXEEXT) : gxkernel.cu testgpukernel.cu ../../fxkernel/src/common.cpp
-	$(NVCC) -DUSING_CUDA  -DUSEHALF $(CUFLAGS) -arch=sm_75 $(CLINK) -o $@ $^
+	$(NVCC) -DUSING_CUDA  -DUSEHALF $(CUFLAGS) -arch=sm_86 $(CLINK) -o $@ $^
 
 benchmark_gxkernel$(EXEEXT) : gxkernel.cu benchmark_gxkernel.cu
 	$(NVCC) $(CUFLAGS) $(CLINK) -o $@ $^
