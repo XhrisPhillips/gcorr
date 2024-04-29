@@ -47,12 +47,12 @@ IppsFIRSpec_32fc *pcSpec;
 
 #define SEED 48573
 
-double currentmjd();
-void mjd2cal(double mjd, int *day, int *month, int *year, double *ut);
+//double currentmjd();
+//void mjd2cal(double mjd, int *day, int *month, int *year, double *ut);
 
-void dayno2cal (int dayno, int year, int *day, int *month);
-double cal2mjd(int day, int month, int year);
-double tm2mjd(struct tm date);
+//void dayno2cal (int dayno, int year, int *day, int *month);
+//double cal2mjd(int day, int month, int year);
+//double tm2mjd(struct tm date);
 
 void generateData(Ipp32f **data, int nchan, int nsamp, int iscomplex, int nobandpass,
 		  int noise, int bandwidth, float tone, float amp,
@@ -94,11 +94,11 @@ int main (int argc, char * const argv[]) {
   int iscomplex = 0;
   int nobandpass = 0;
   int noise = 0;
-  int year = -1;
-  int month = -1;
-  int day = -1;
-  int dayno = -1;
-  double mjd = -1;
+  //  int year = -1;
+  //  int month = -1;
+  //  int day = -1;
+  //  int dayno = -1;
+  //  double mjd = -1;
   float tone = 10;    // MHz
   float tone2 = 0.0;  // MHz
   float amp = 0.1;
@@ -109,12 +109,12 @@ int main (int argc, char * const argv[]) {
   struct option options[] = {
     {"bandwidth", 1, 0, 'w'},
     {"channels", 1, 0, 'C'},
-    {"day", 1, 0, 'd'},
-    {"dayno", 1, 0, 'D'},
-    {"month", 1, 0, 'm'},
-    {"mjd", 1, 0, 'M'},
-    {"year", 1, 0, 'y'},
-    {"time", 1, 0, 't'},
+    //    {"day", 1, 0, 'd'},
+    //    {"dayno", 1, 0, 'D'},
+    //    {"month", 1, 0, 'm'},
+    //    {"mjd", 1, 0, 'M'},
+    //    {"year", 1, 0, 'y'},
+    //    {"time", 1, 0, 't'},
     {"duration", 1, 0, 'l'},
     {"amp", 1, 0, 'a'},
     {"amp2", 1, 0, 'A'},
@@ -160,11 +160,11 @@ int main (int argc, char * const argv[]) {
     switch (opt) {
 
       CASEINT('w', bandwidth);
-      CASEINT('d', day);
-      CASEINT('D', dayno);
-      CASEINT('m', month);
-      CASEINT('M', mjd);
-      CASEINT('y', year);
+      //      CASEINT('d', day);
+      //      CASEINT('D', dayno);
+      //      CASEINT('m', month);
+      //      CASEINT('M', mjd);
+      //      CASEINT('y', year);
       CASEINT('b', nbits);
       CASEINT('x', ntap);
       CASEINT('C', channels);
@@ -197,25 +197,24 @@ int main (int argc, char * const argv[]) {
 
       case 'h':
 	printf("Usage: generateSpectrum [options]\n");
-	printf("  -w/-bandwidth <BANWIDTH>  Channel bandwidth in MHz (64)\n");
+	printf("  -w/-bandwidth <BANDWIDTH>  Channel bandwidth in MHz (64)\n");
 	printf("  -b/-nbits <N>             Number of bits/sample (default 2)\n");
+	printf("  -C/-channels <N>          Number of IF channels (default 1)\n");
 	printf("  -c/-complex               Generate complex data\n");
-	printf("  -C/-channels <N>          Number of if channels (default 1)\n");
 	printf("  -f/-float                 Save data as floats\n");
 	printf("  -l/-duration <DURATION>   Length of output, in seconds\n");
-	printf("  -T/-tone <TONE>           Frequency (MHz) of tone to insert\n");
-	printf("  -ntap <TAPS>              Number of taps for FIR filter to create band shape\n");
-	printf("  -a/-amp <amp>             Amplitude of tone\n");
-	printf("  -A/-amp2 <amp2>d          Amplitude of second tone\n");
 	printf("  -T/-tone <TONE>           Frequency of tone (MHz)\n");
 	printf("  -2/-tone2 <TONE>          Frequency of second tone  (MHz)\n");
+	printf("  -a/-amp <amp>             Amplitude of tone\n");
+	printf("  -A/-amp2 <amp2>d          Amplitude of second tone\n");
 	printf("  -n/-noise                 Include (correlated) noise\n");
-	printf("  -day <DAY>                Day of month of start time (now)\n");
-	printf("  -month <MONTH>            Month of start time (now)\n");
-	printf("  -dayno <DAYNO>            Day of year of start time (now)\n");
-	printf("  -year <YEAR>              Year of start time (now)\n");
-	printf("  -time <HH:MM:SS>          Year of start time (now)\n");
-	printf("  -mjd <MJD>                MJD of start time\n");
+	printf("  -ntap <TAPS>              Number of taps for FIR filter to create band shape\n");
+	//	printf("  -day <DAY>                Day of month of start time (now)\n");
+	//	printf("  -month <MONTH>            Month of start time (now)\n");
+	//	printf("  -dayno <DAYNO>            Day of year of start time (now)\n");
+	//	printf("  -year <YEAR>              Year of start time (now)\n");
+	//	printf("  -time <HH:MM:SS>          Year of start time (now)\n");
+	//	printf("  -mjd <MJD>                MJD of start time\n");
 	return(1);
 	break;
       
@@ -232,28 +231,28 @@ int main (int argc, char * const argv[]) {
     filename = strdup(argv[optind]);
   }
 
-  // Set time
-  double thismjd = currentmjd();
-  int thisday, thismonth, thisyear;
-  double ut;
-  mjd2cal(thismjd, &thisday, &thismonth, &thisyear, &ut);
+  //  // Set time
+  //  double thismjd = currentmjd();
+  //  int thisday, thismonth, thisyear;
+  //  double ut;
+  //  mjd2cal(thismjd, &thisday, &thismonth, &thisyear, &ut);
 
-  if (year==-1) year = thisyear;
-  if (day==-1) day = thisday;
-  if (month==-1) month = thismonth;
-  if (dayno!=-1) dayno2cal(dayno, year, &day, &month);
+  //  if (year==-1) year = thisyear;
+  //  if (day==-1) day = thisday;
+  //  if (month==-1) month = thismonth;
+  //  if (dayno!=-1) dayno2cal(dayno, year, &day, &month);
 
-  if (timestr!=NULL) {
-    int hour, min, sec;
-    status = sscanf(timestr, "%2d:%2d:%2d", &hour, &min, &sec);
-    if (status==0) {
-      fprintf(stderr, "Warning: Could not parse %s (%d)\n", timestr, status);
-    } else {
-      ut = ((sec/60.0+min)/60.0+hour)/24.0;
-    }
-  }
-
-  mjd = cal2mjd(day, month, year)+ut;
+  //  if (timestr!=NULL) {
+  //    int hour, min, sec;
+  //    status = sscanf(timestr, "%2d:%2d:%2d", &hour, &min, &sec);
+  //    if (status==0) {
+  //      fprintf(stderr, "Warning: Could not parse %s (%d)\n", timestr, status);
+  //    } else {
+  //      ut = ((sec/60.0+min)/60.0+hour)/24.0;
+  //    }
+  //  }
+  //
+  //  mjd = cal2mjd(day, month, year)+ut;
 
   memsize *= 1024*1024;
 
@@ -468,7 +467,9 @@ int main (int argc, char * const argv[]) {
   }
   return(0);
 }
-  
+
+#if 0 // This is all needed for time calculations which are not used
+
 double currentmjd () {
   struct tm *tim;
   struct timeval currenttime;
@@ -568,6 +569,8 @@ double tm2mjd(struct tm date) {
 
   return(cal2mjd(date.tm_mday, date.tm_mon+1, date.tm_year+1900)+dayfrac);
 }
+
+#endif
 
 void generateData(Ipp32f **data, int nchan, int nsamp, int iscomplex, int nobandpass,
 		  int noise, int bandwidth, float tone, float amp, float tone2,
