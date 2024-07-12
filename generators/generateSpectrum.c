@@ -109,12 +109,6 @@ int main (int argc, char * const argv[]) {
   struct option options[] = {
     {"bandwidth", 1, 0, 'w'},
     {"channels", 1, 0, 'C'},
-    //    {"day", 1, 0, 'd'},
-    //    {"dayno", 1, 0, 'D'},
-    //    {"month", 1, 0, 'm'},
-    //    {"mjd", 1, 0, 'M'},
-    //    {"year", 1, 0, 'y'},
-    //    {"time", 1, 0, 't'},
     {"duration", 1, 0, 'l'},
     {"amp", 1, 0, 'a'},
     {"amp2", 1, 0, 'A'},
@@ -136,7 +130,7 @@ int main (int argc, char * const argv[]) {
   
   /* Read command line options */
   while (1) {
-    opt = getopt_long_only(argc, argv, "w:B:xb:d:m:M:y:t:n:cT:hF:C:", options, NULL);
+    opt = getopt_long_only(argc, argv, "w:l:A:a:B:b:t:ncfT:hC:", options, NULL);
     if (opt==EOF) break;
     
 #define CASEINT(ch,var)                                     \
@@ -160,11 +154,6 @@ int main (int argc, char * const argv[]) {
     switch (opt) {
 
       CASEINT('w', bandwidth);
-      //      CASEINT('d', day);
-      //      CASEINT('D', dayno);
-      //      CASEINT('m', month);
-      //      CASEINT('M', mjd);
-      //      CASEINT('y', year);
       CASEINT('b', nbits);
       CASEINT('x', ntap);
       CASEINT('C', channels);
