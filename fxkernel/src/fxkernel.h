@@ -26,7 +26,7 @@ public:
    * @param localosc the local oscillator frequency in Hz 
    * @param bw the bandwidth in Hz 
    */
-  FxKernel(int nant, int nchan, int nfft, int nbit, double localosc, double bw);
+  FxKernel(int nant, int nchan, int nfft, int nbit, double localosc, double bw, bool is_complex);
 
   /**
    * Destructor for the FxKernel

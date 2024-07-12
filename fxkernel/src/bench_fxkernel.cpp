@@ -38,7 +38,8 @@ int numffts;      // The number of FFTs to be processed in this subintegration
 int numchannels;  // The number of channels that will be produced by the FFT
 double lo;        // The local oscillator frequency, in Hz
 double bandwidth; // The bandwidth, in Hz
-double **delays;    // Delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration
+bool iscomplex;   // Is the votage complex sampled
+double **delays;  // Delay polynomial for each antenna.  delay is in seconds, time is in units of FFT duration
 double * antfileoffsets; // Not used
 int nloop = 2;   //  Number of times to loop
 int nbuf  = 5;   // Number of "subints" to loop between 
@@ -106,7 +107,7 @@ void *fxbench(void *arg) {
   }
 
   // create the FxKernel
-  FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth);
+  FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth, iscomplex);
 
   // Set the delays
   fxkernel.setDelays(delays, antfileoffsets);
@@ -142,7 +143,7 @@ int main(int argc, char *argv[])
   int tid[MAXTHREAD];
   char *configfile; /**< The filename of the config file */
   int nPol; /**< The number of polarisations in the data (1 or 2) */
-  bool iscomplex; /**< Is the data complex or not */
+  //bool iscomplex; /**< Is the data complex or not */
   vector<string> antennas; /**< the names of the antennas */
   vector<string> antFiles; /**< the data files for each antenna */
   vector<std::ifstream *> antStream; /**< a file stream for each antenna */

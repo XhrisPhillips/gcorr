@@ -1,8 +1,8 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.69])
-AC_INIT([gcorr], [0.0.1], [adeller@gmail.com], [gcorr], [https://github.com/XhrisPhillips/gcorr])
+AC_PREREQ([2.71])
+AC_INIT([gcorr],[0.0.1],[adeller@gmail.com],[gcorr],[https://github.com/XhrisPhillips/gcorr])
 #AM_INIT_AUTOMAKE([pippo], [2.6])
 AC_CONFIG_SRCDIR([src/gxkernel.h])
 AC_CONFIG_HEADERS([config.h])
@@ -50,4 +50,5 @@ AC_CHECK_FUNCS([dup2 fchdir getcwd getpagesize gettimeofday localtime_r memset m
 
 #AC_CONFIG_FILES([Makefile
              #    src/Makefile])
-AC_OUTPUT([Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile])
+AC_OUTPUT

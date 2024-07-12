@@ -27,10 +27,10 @@ void initLUT2bitReal ()
   }
 }
 
-FxKernel::FxKernel(int nant, int nchan, int nfft, int nbit, double lo, double bw)
-  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), nbits(nbit), lofreq(lo), bandwidth(bw), sampletime(1.0/(2.0*bw))
+FxKernel::FxKernel(int nant, int nchan, int nfft, int nbit, double lo, double bw, bool is_complex)
+  : numantennas(nant), numchannels(nchan), fftchannels(2*nchan), numffts(nfft), nbits(nbit), lofreq(lo), bandwidth(bw), iscomplex(is_complex), sampletime(1.0/(2.0*bw))
 {
-  iscomplex = 0; // Allow for further generalisation later
+
   if (iscomplex)
   {
     cfact = 2;
@@ -473,6 +473,17 @@ void unpackReal2bit(u8 * inputdata, cf32 ** unpacked, int offset, int nsamp) {
     unpacked[0][o] = fp[0];
     unpacked[1][o] = fp[1];
   }
+}
+
+void unpackComplex8bit(u8 *inputdata, cf32 **unpacked, int offset, int nsamp) {
+  s8 *byte = (s8*)&inputdata[offset*2];
+  for (int i=0; i<nsamp; i++) {
+    unpacked[0][i].re   = *(byte++);
+    unpacked[0][i].im   = *(byte++);
+    unpacked[1][i].re   = *(byte++);
+    unpacked[1][i].im   = *(byte++);
+  }
+  return;
 }
 
 void FxKernel::unpack(u8 * inputdata, cf32 ** unpacked, int offset)

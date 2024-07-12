@@ -10,6 +10,7 @@
 
 /* Types */
 #define u8                       Ipp8u
+#define s8                       Ipp8s
 #define f32                      Ipp32f
 #define f64                      Ipp64f
 #define cf32                     Ipp32fc

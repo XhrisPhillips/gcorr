@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
   // create the FxKernel
   // We could also create multiple FxKernels to test parallelisation in a simple/lazy way
-  FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth);
+  FxKernel fxkernel = FxKernel(numantennas, numchannels, numffts, nbit, lo, bandwidth, iscomplex);
 
   // Give the fxkernel its pointer to the input data
   fxkernel.setInputData(inputdata);

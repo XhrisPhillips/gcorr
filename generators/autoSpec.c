@@ -188,11 +188,14 @@ int main (int argc, char * const argv[]) {
 
     case 'h':
       printf("Usage: autoSpec [options]\n");
-      printf("  -C/-chan <n>        Channel to correlate (can specify "
-	     "multiple times)\n");
-      printf("  -n/-npoint <n>      # spectral channels\n");
-      printf("  -N/-init <val>      Number of ffts to average per integration\n");
-      printf("  -device <pgdev>     Pgplot device to plot to\n");
+      printf("  -C/-chan <n>        Channel to correlate (can specify multiple times)\n");
+      printf("  -n/-npoint <n>      # spectral channels to generate\n");
+      printf("  -b/-bits <n>        # Input voltage bits per sample\n");
+      printf("  -c/-complex         # Input voltage complex\n");
+      printf("  -f/-float           # Input voltage IEEE float, not integer\n");
+      printf("  -noplot>            # Don't plot using PGPLOT\n");
+      printf("  -specfile <file>    # Output filename of spectrum\n");
+      printf("  -device <pgdev>     # Pgplot device to plot to\n");
       printf("  -s/-skip <n>        Skip this many bytes at start of file\n");
       printf("  -h/-help            This list\n");
       return(1);

@@ -1,8 +1,8 @@
-#AC_INIT([FULL-PACKAGE-NAME], [VERSION], [BUG-REPORT-ADDRESS], [TAR-NAME], [URL])
-AC_INIT([fxkernel], [0.0.1], [adeller@gmail.com], [fxkernel], [https://github.com/XhrisPhillips/gcorr])
+#AC_INIT([FULL-PACKAGE-NAME],[VERSION],[BUG-REPORT-ADDRESS],[TAR-NAME],[URL])
+AC_INIT([fxkernel],[0.0.1],[adeller@gmail.com],[fxkernel],[https://github.com/XhrisPhillips/gcorr])
 
 # Force autoconf to be at least this version number.
-AC_PREREQ([2.68])
+AC_PREREQ([2.71])
 
 # Put autotools auxiliary files in a subdir, so they don't clutter top dir.
 AC_CONFIG_AUX_DIR([build-aux])
@@ -43,7 +43,7 @@ CXXFLAGS="${CXXFLAGS} ${IPP_CFLAGS}"
 LIBS="${IPP_LIBS} $LIBS"
 
 # pthreads
-ACX_PTHREAD
+AX_PTHREAD
 
 # Last line: actually generate all required output files.
 AC_OUTPUT
