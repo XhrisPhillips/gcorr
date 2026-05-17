@@ -488,10 +488,12 @@ void unpackComplex8bit(u8 *inputdata, cf32 **unpacked, int offset, int nsamp) {
 
 void FxKernel::unpack(u8 * inputdata, cf32 ** unpacked, int offset)
 {
-  if (nbits==2) {
+  if (nbits==2 && !iscomplex) {
     unpackReal2bit(inputdata, unpacked, offset, fftchannels);
+  } else if (nbits==8 && iscomplex) {
+    unpackComplex8bit(inputdata, unpacked, offset, fftchannels);
   } else {
-    std::cerr << "Unsupported number of bits!!!" << std::endl;
+    std::cerr << "Unsupported number of bits!!! (" << nbits << ")" << std::endl;
   }
 }
 
